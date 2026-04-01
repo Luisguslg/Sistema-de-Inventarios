@@ -1,0 +1,214 @@
+@page "/admin/usuarios"
+@inject IITS.Services.IUsuarioService UsuarioService
+@inject IITS.Services.ToastService Toast
+
+<PageTitle>Usuarios</PageTitle>
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Usuarios</h1>
+        <p class="has-text-grey">CRUD de usuarios y asignación de roles.</p>
+        <div class="buttons mt-4">
+            <button class="button is-primary" @onclick="AbrirNuevo">Nuevo usuario</button>
+            <a href="@(PathBase.TrimEnd('/'))/api/export/Usuarios/xlsx" class="button is-light" target="_blank" download>Excel</a>
+            <a href="@(PathBase.TrimEnd('/'))/api/export/Usuarios/pdf" class="button is-light" target="_blank" download>PDF</a>
+        </div>
+        @if (loading) { <p>Cargando...</p> }
+        else
+        {
+            <table class="table is-fullwidth is-striped mt-4">
+                <thead>
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Nombre</th>
+                        <th>Email</th>
+                        <th>Roles</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in usuarios)
+                    {
+                        <tr>
+                            <td>@u.Username</td>
+                            <td>@(u.Nombre ?? "") @(u.Apellido ?? "")</td>
+                            <td>@(u.Email ?? "-")</td>
+                            <td>@string.Join(", ", u.UserRoles.Select(ur => ur.Role?.Nombre ?? "").Where(s => !string.IsNullOrEmpty(s)))</td>
+                            <td>
+                                <button class="button is-small is-info is-light" @onclick="() => AbrirEditar(u.Id)">Editar</button>
+                                <button class="button is-small is-danger is-light" @onclick="() => Eliminar(u.Id)">Eliminar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!usuarios.Any()) { <p class="has-text-grey">No hay usuarios.</p> }
+        }
+    </div>
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModal"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">@(editingId == null ? "Nuevo usuario" : "Editar usuario")</p>
+                <button class="delete" @onclick="CerrarModal"></button>
+            </header>
+            <section class="modal-card-body">
+                <EditForm Model="formModel" OnValidSubmit="Guardar" id="form-usuario">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="notification is-danger is-light" />
+                    <div class="field">
+                        <label class="label">Username <span class="has-text-danger">*</span></label>
+                        <div class="control">
+                            <InputText class="input" @bind-Value="formModel.Username" placeholder="Usuario" disabled="@(editingId != null)" />
+                        </div>
+                    </div>
+                    <div class="columns">
+                        <div class="column is-6 field">
+                            <label class="label">Nombre</label>
+                            <div class="control">
+                                <InputText class="input" @bind-Value="formModel.Nombre" placeholder="Nombre" />
+                            </div>
+                        </div>
+                        <div class="column is-6 field">
+                            <label class="label">Apellido</label>
+                            <div class="control">
+                                <InputText class="input" @bind-Value="formModel.Apellido" placeholder="Apellido" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Email</label>
+                        <div class="control">
+                            <InputText class="input" type="email" @bind-Value="formModel.Email" placeholder="email@ejemplo.com" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Código SAP</label>
+                        <div class="control">
+                            <InputText class="input" @bind-Value="formModel.CodSap" placeholder="Opcional" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Roles</label>
+                        <div class="control">
+                            @foreach (var r in rolesDisponibles)
+                            {
+                                <label class="checkbox mr-3">
+                                    <input type="checkbox" checked="@formModel.RoleIds.Contains(r.Id)" @onchange="e => ToggleRol(r.Id, (bool)(e.Value ?? false))" />
+                                    @r.Nombre
+                                </label>
+                            }
+                        </div>
+                    </div>
+                </EditForm>
+            </section>
+            <footer class="modal-card-foot">
+                <button type="submit" form="form-usuario" class="button is-primary">Guardar</button>
+                <button type="button" class="button" @onclick="CerrarModal">Cancelar</button>
+            </footer>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private List<IITS.Entities.User> usuarios = new();
+    private List<IITS.Entities.Role> rolesDisponibles = new();
+    private bool loading = true;
+    private bool mostrarModal = false;
+    private Guid? editingId = null;
+    private FormUsuarioModel formModel = new();
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        usuarios = await UsuarioService.GetAllWithRolesAsync();
+        rolesDisponibles = await UsuarioService.GetRolesAsync();
+        loading = false;
+    }
+
+    private void AbrirNuevo()
+    {
+        editingId = null;
+        formModel = new FormUsuarioModel { RoleIds = new List<Guid>() };
+        mostrarModal = true;
+    }
+
+    private async Task AbrirEditar(Guid id)
+    {
+        editingId = id;
+        var u = await UsuarioService.GetByIdAsync(id);
+        if (u == null) return;
+        var roleIds = await UsuarioService.GetUserRoleIdsAsync(id);
+        formModel = new FormUsuarioModel
+        {
+            Username = u.Username ?? "",
+            Nombre = u.Nombre ?? "",
+            Apellido = u.Apellido ?? "",
+            Email = u.Email ?? "",
+            CodSap = u.CodSap ?? "",
+            RoleIds = roleIds.ToList()
+        };
+        mostrarModal = true;
+        StateHasChanged();
+    }
+
+    private void ToggleRol(Guid roleId, bool add)
+    {
+        if (add && !formModel.RoleIds.Contains(roleId))
+            formModel.RoleIds.Add(roleId);
+        else if (!add)
+            formModel.RoleIds.Remove(roleId);
+    }
+
+    private void CerrarModal() => mostrarModal = false;
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(formModel.Username)) { Toast.ShowToast("Username requerido", IITS.Services.ToastLevel.Warning); return; }
+        try
+        {
+            if (editingId == null)
+            {
+                var u = new IITS.Entities.User
+                {
+                    Username = formModel.Username.Trim(),
+                    Nombre = formModel.Nombre?.Trim() ?? "",
+                    Apellido = formModel.Apellido?.Trim() ?? "",
+                    Email = formModel.Email?.Trim() ?? "",
+                    CodSap = formModel.CodSap?.Trim() ?? ""
+                };
+                await UsuarioService.CreateAsync(u, formModel.RoleIds);
+            }
+            else
+            {
+                var u = await UsuarioService.GetByIdAsync(editingId.Value);
+                if (u != null)
+                {
+                    u.Nombre = formModel.Nombre?.Trim() ?? "";
+                    u.Apellido = formModel.Apellido?.Trim() ?? "";
+                    u.Email = formModel.Email?.Trim() ?? "";
+                    u.CodSap = formModel.CodSap?.Trim() ?? "";
+                    await UsuarioService.UpdateAsync(u, formModel.RoleIds);
+                }
+            }
+            CerrarModal();
+            await Cargar();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowToast(ex.Message, IITS.Services.ToastLevel.Warning);
+        }
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        await UsuarioService.DeleteAsync(id);
+        await Cargar();
+    }
+}

@@ -1,0 +1,357 @@
+@page "/auditoria/{Modulo}"
+@inject IITS.Services.ICurrentUserService UserService
+@inject IITS.Services.IAprobacionService AprobacionService
+@inject IITS.Services.IAprobacionPermisoService AprobacionPermisoService
+@inject IITS.Services.IAplicacionService AplicacionService
+@inject IITS.Data.AppDbContext Db
+@inject NavigationManager Nav
+
+<PageTitle>Auditoría - @NombreModulo</PageTitle>
+
+
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Auditoría - @NombreModulo</h1>
+        <p class="has-text-grey">Vista de solo lectura. Quien tenga permiso puede aprobar los cambios pendientes.</p>
+        @if (!moduloValido)
+        {
+            <p class="has-text-danger">Módulo no válido.</p>
+            <a href="@(PathBase)" class="button is-light">Ir a Inicio</a>
+        }
+        else
+        {
+            <div>
+                <a class="button is-primary mt-2" href="@(PathBase)api/auditoria/pdf?modulo=@Uri.EscapeDataString(Modulo ?? "")" target="_blank" download>Descargar PDF</a>
+                <a class="button is-light mt-2" href="@LinkInventario">Ir a Inventarios → @NombreModulo</a>
+            </div>
+            @if (puedeAprobar)
+            {
+                <section class="mt-4">
+                    <h2 class="title is-5">Pendientes de aprobación</h2>
+                    @if (loadingAprob) { <p>Cargando...</p> }
+                    else if (pendientes.Any())
+                    {
+                        <div class="table-container">
+                            <table class="table is-fullwidth is-striped table-headers-unified">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Registro</th>
+                                        <th>Acción</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in pendientes)
+                                    {
+                                        var a = p.Aprobacion;
+                                        <tr>
+                                            <td>@a.Fecha.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                            <td>@p.NombreEntidad</td>
+                                            <td>@(a.Comentario ?? "—")</td>
+                                            <td>@a.Estado</td>
+                                            <td>
+                                                @if (p.MiVotoEstado == "Aprobado")
+                                                {
+                                                    <span class="tag is-success" style="border: 1px solid rgba(0,0,0,0.1); padding: 0.35em 0.65em;">Aprobado</span>
+                                                }
+                                                else if (p.MiVotoEstado == "Rechazado")
+                                                {
+                                                    <span class="tag is-danger is-light" style="border: 1px solid rgba(0,0,0,0.1); padding: 0.35em 0.65em;">Rechazado</span>
+                                                }
+                                                else
+                                                {
+                                                    <div class="buttons are-small" style="gap: 0.5rem;">
+                                                        <button type="button" class="button is-small is-success" @onclick="() => AbrirModalAprobarRechazar(a.Id, true)" title="Aprobar">Aprobar</button>
+                                                        <button type="button" class="button is-small is-danger is-light" @onclick="() => AbrirModalAprobarRechazar(a.Id, false)" title="Rechazar">Rechazar</button>
+                                                    </div>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                else
+                {
+                        <p class="has-text-grey">No hay pendientes de aprobación en este módulo.</p>
+                    }
+                </section>
+            }
+
+            @* Modal Aprobar/Rechazar con comentario opcional *@
+            @if (mostrarModalAprobarRechazar)
+            {
+                <div class="modal is-active">
+                    <div class="modal-background" @onclick="CerrarModalAprobarRechazar"></div>
+                    <div class="modal-card" style="max-width: 420px;">
+                        <header class="modal-card-head">
+                            <p class="modal-card-title">@(esAprobarModal ? "Aprobar solicitud" : "Rechazar solicitud")</p>
+                            <button type="button" class="delete" aria-label="close" @onclick="CerrarModalAprobarRechazar"></button>
+                        </header>
+                        <section class="modal-card-body">
+                            <div class="field">
+                                <label class="label">Comentario (opcional)</label>
+                                <div class="control">
+                                    <textarea class="textarea" rows="3" placeholder="Agregue un comentario si lo desea" @bind="comentarioModal"></textarea>
+                                </div>
+                            </div>
+                        </section>
+                        <footer class="modal-card-foot">
+                            @if (esAprobarModal)
+                            {
+                                <button class="button is-success" @onclick="ConfirmarAprobarRechazar" disabled="@(enviandoAccion)">Aprobar</button>
+                            }
+                            else
+                            {
+                                <button class="button is-danger" @onclick="ConfirmarAprobarRechazar" disabled="@(enviandoAccion)">Rechazar</button>
+                            }
+                            <button class="button is-light" @onclick="CerrarModalAprobarRechazar" disabled="@(enviandoAccion)">Cancelar</button>
+                        </footer>
+                    </div>
+                </div>
+            }
+
+            <section class="mt-4">
+                <h2 class="title is-5">Datos del módulo</h2>
+                <p class="has-text-grey mb-3">Solo lectura. Para editar use <strong>Inventarios</strong>.</p>
+                @if (loadingDatos) { <p>Cargando...</p> }
+                else if (datosAuditoria.Any())
+                {
+                    <div class="table-container">
+                        <table class="table is-fullwidth is-bordered table-headers-unified">
+                            <thead><tr>@foreach (var c in columnasAuditoria) { <th>@c</th> }</tr></thead>
+                            <tbody>
+                                @foreach (var row in datosAuditoria)
+                                { <tr>@foreach (var v in row) { <td>@v</td> }</tr> }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else { <p class="has-text-grey">No hay datos.</p> }
+                <h3 class="title is-6 mt-4">Aprobadores designados</h3>
+                @if (aprobadores.Any())
+                {
+                    <table class="table is-fullwidth is-bordered table-headers-unified">
+                        <thead><tr><th>Revisor</th><th>Cargo</th><th>Estado</th></tr></thead>
+                        <tbody>
+                            @foreach (var ap in aprobadores)
+                            { <tr><td>@ap.NombreCompleto</td><td>@ap.Cargo</td><td>@ap.Estatus</td></tr> }
+                        </tbody>
+                    </table>
+                }
+                else { <p class="has-text-grey">No hay aprobadores para este módulo.</p> }
+            </section>
+
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    [Parameter] public string Modulo { get; set; } = "";
+    private static string Na(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : s;
+
+    private bool moduloValido;
+    private bool puedeAprobar;
+    private List<PendienteConVoto> pendientes = new();
+    private bool loadingAprob = true;
+    private bool mostrarModalAprobarRechazar;
+    private Guid? aprobacionIdModal;
+    private bool esAprobarModal;
+    private string comentarioModal = "";
+    private bool enviandoAccion;
+    private bool loadingDatos = true;
+    private List<string> columnasAuditoria = new();
+    private List<List<string>> datosAuditoria = new();
+    private List<(string NombreCompleto, string Cargo, string Estatus)> aprobadores = new();
+
+    private string NombreModulo => Modulo switch
+    {
+        "aplicaciones" => "Aplicaciones",
+        "operaciones" => "Tecnología",
+        "cuentas" => "Cuentas",
+        _ => Modulo
+    };
+
+    private string LinkInventario => Modulo switch
+    {
+        "aplicaciones" => "/aplicaciones",
+        "operaciones" => "/operaciones",
+        "cuentas" => "/cuentas",
+        _ => "/"
+    };
+
+    private static readonly HashSet<string> ModulosValidos = new(StringComparer.OrdinalIgnoreCase)
+        { "aplicaciones", "operaciones", "cuentas" };
+
+    private string? _moduloCargado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        moduloValido = ModulosValidos.Contains(Modulo ?? "");
+        if (!moduloValido) return;
+        puedeAprobar = await UserService.CanApproveModuloAsync(ModuloAprobacion());
+        _moduloCargado = Modulo;
+        await CargarPendientes();
+        await CargarDatosAuditoria();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!moduloValido) return;
+        if (_moduloCargado != null && string.Equals(_moduloCargado, Modulo, StringComparison.OrdinalIgnoreCase)) return;
+        _moduloCargado = Modulo;
+        puedeAprobar = await UserService.CanApproveModuloAsync(ModuloAprobacion());
+        await CargarPendientes();
+        await CargarDatosAuditoria();
+    }
+
+    private async Task CargarDatosAuditoria()
+    {
+        loadingDatos = true;
+        var mod = ModuloAprobacion();
+        if (mod.Equals("Aplicaciones", StringComparison.OrdinalIgnoreCase))
+        {
+            var apps = await AplicacionService.GetAllAsync();
+            columnasAuditoria = new List<string> { "Nombre", "Funcionalidad", "Propietario", "Responsable", "Estatus" };
+            datosAuditoria = apps.Select(a => new List<string>
+            {
+                Na(a.Nombre),
+                (a.Funcionalidad ?? "").Length > 80 ? (a.Funcionalidad ?? "").Substring(0, 80) + "…" : Na(a.Funcionalidad),
+                Na(a.Propietario),
+                Na(a.Responsable),
+                Na(a.Estatus?.Nombre)
+            }).ToList();
+        }
+        else if (mod.Equals("Operaciones", StringComparison.OrdinalIgnoreCase))
+        {
+            var list = await Db.Operaciones.AsNoTracking()
+                .Include(o => o.Office).Include(o => o.Area).Include(o => o.Alojamiento)
+                .Include(o => o.OwnerArea).Include(o => o.Criticality).Include(o => o.Environment)
+                .Include(o => o.Manufacturer).Include(o => o.DeviceModel)
+                .OrderBy(o => o.Hostname)
+                .ToListAsync();
+            columnasAuditoria = new List<string> { "Oficina", "Área responsable", "Dispositivo", "Hostname", "Entorno de operación", "Propietario", "Criticidad", "Ambiente", "Fabricante", "Modelo", "Función", "Tipo de infraestructura", "Serial", "Sistema Operativo", "Firmware", "Garantía" };
+            datosAuditoria = list.Select(o => new List<string>
+            {
+                Na(o.Office?.Name),
+                Na(o.Area?.Name),
+                Na(o.TipoDispositivo),
+                Na(o.Hostname),
+                Na(o.Alojamiento?.Nombre),
+                Na(o.Propietario ?? o.OwnerArea?.Name),
+                Na(o.Criticality?.Name),
+                Na(o.Environment?.Name),
+                Na(o.Manufacturer?.Name),
+                Na(o.DeviceModel?.Name),
+                Na(o.Funcion),
+                Na(o.TipoInfraestructura),
+                Na(o.Serial),
+                Na(o.SistemaOperativo),
+                Na(o.Firmware),
+                o.GarantiaExpira.HasValue ? o.GarantiaExpira.Value.ToString("yyyy-MM-dd") : "N/A"
+            }).ToList();
+        }
+        else if (mod.Equals("Cuentas", StringComparison.OrdinalIgnoreCase))
+        {
+            IQueryable<IITS.Entities.CuentaPrivilegiada> qPriv = Db.CuentasPrivilegiadas.AsNoTracking().Include(c => c.Estatus).Include(c => c.Area).Include(c => c.Aplicacion);
+            IQueryable<IITS.Entities.CuentaServicio> qServ = Db.CuentasServicio.AsNoTracking().Include(c => c.Estatus).Include(c => c.Area).Include(c => c.Aplicacion);
+            var priv = await qPriv.OrderBy(c => c.Nombre).ToListAsync();
+            var serv = await qServ.OrderBy(c => c.Nombre).ToListAsync();
+            columnasAuditoria = new List<string> { "Tipo", "Nombre", "Área", "Responsable", "Origen", "Servicio/Aplicación", "Tipo config. cambio", "Intervalo (días)", "Grupos seguridad", "Descripción", "Estatus" };
+            datosAuditoria = priv.Select(p => new List<string>
+            {
+                "Privilegiada", Na(p.Nombre), Na(p.Area?.Name), Na(p.Responsable), Na(p.Origen),
+                Na(p.Aplicacion?.Nombre) ?? Na(p.ServicioRelacionado), Na(p.TipoConfiguracionCambio),
+                p.IntervaloCambioDias?.ToString() ?? "N/A", Na(p.GruposSeguridad), Na(p.Descripcion), Na(p.Estatus?.Nombre)
+            }).ToList();
+            datosAuditoria.AddRange(serv.Select(s => new List<string>
+            {
+                "Servicio", Na(s.Nombre), Na(s.Area?.Name), Na(s.Responsable), Na(s.Origen),
+                Na(s.Aplicacion?.Nombre) ?? Na(s.ServicioRelacionado), Na(s.TipoConfiguracionCambio),
+                s.IntervaloCambioDias?.ToString() ?? "N/A", Na(s.GruposSeguridad), Na(s.Descripcion), Na(s.Estatus?.Nombre)
+            }));
+        }
+        var users = await AprobacionPermisoService.GetApproversForModuloAsync(mod);
+        var userIds = users.Select(u => u.Id).ToList();
+        var rolesByUser = userIds.Any()
+            ? await Db.UserRoles.AsNoTracking().Include(ur => ur.Role).Where(ur => userIds.Contains(ur.UserId)).ToListAsync()
+            : new List<IITS.Entities.UserRole>();
+        var modulosAprob = mod == "Cuentas" ? new[] { "Cuentas", "CuentasPrivilegiadas", "CuentasServicio" } : new[] { mod };
+        var pendientesIds = await Db.Aprobaciones.AsNoTracking()
+            .Where(a => a.Estado == "Por aprobar" && modulosAprob.Contains(a.Modulo))
+            .Select(a => a.Id)
+            .ToListAsync();
+        var votosPorUsuario = userIds.Any() && pendientesIds.Any() && await Db.TableExistsAsync("AprobacionVotos")
+            ? (await Db.AprobacionVotos.AsNoTracking()
+                .Where(v => pendientesIds.Contains(v.AprobacionId) && userIds.Contains(v.UserId))
+                .Select(v => new { v.AprobacionId, v.UserId })
+                .ToListAsync())
+                .GroupBy(x => x.UserId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.AprobacionId).ToHashSet())
+            : new Dictionary<Guid, HashSet<Guid>>();
+        var totalPendientes = pendientesIds.Count;
+        aprobadores = users.Select(u =>
+        {
+            var cargo = rolesByUser.Where(ur => ur.UserId == u.Id).Select(ur => ur.Role?.Nombre).FirstOrDefault(r => !string.IsNullOrEmpty(r));
+            var nombreCompleto = $"{u.Nombre} {u.Apellido}".Trim();
+            if (string.IsNullOrEmpty(nombreCompleto)) nombreCompleto = u.Username ?? "";
+            var votados = votosPorUsuario.TryGetValue(u.Id, out var set) ? set.Count : 0;
+            var porAprobar = totalPendientes - votados;
+            var estatus = porAprobar <= 0 ? "Al corriente" : (porAprobar == 1 ? "1 por aprobar" : $"{porAprobar} por aprobar");
+            return (NombreCompleto: nombreCompleto, Cargo: string.IsNullOrEmpty(cargo) ? "—" : cargo, Estatus: estatus);
+        }).ToList();
+        loadingDatos = false;
+    }
+
+    private string ModuloAprobacion() => Modulo?.ToLowerInvariant() switch
+    {
+        "aplicaciones" => "Aplicaciones",
+        "operaciones" => "Operaciones",
+        "cuentas" => "Cuentas",
+        _ => Modulo ?? ""
+    };
+
+    private async Task CargarPendientes()
+    {
+        loadingAprob = true;
+        var mod = ModuloAprobacion();
+        pendientes = await AprobacionService.GetPendientesConVotoAsync(mod, UserService.UserId);
+        loadingAprob = false;
+    }
+
+    private void AbrirModalAprobarRechazar(Guid id, bool esAprobar)
+    {
+        aprobacionIdModal = id;
+        esAprobarModal = esAprobar;
+        comentarioModal = "";
+        mostrarModalAprobarRechazar = true;
+    }
+
+    private async Task CerrarModalAprobarRechazar()
+    {
+        if (enviandoAccion) return;
+        mostrarModalAprobarRechazar = false;
+        aprobacionIdModal = null;
+        comentarioModal = "";
+    }
+
+    private async Task ConfirmarAprobarRechazar()
+    {
+        if (!aprobacionIdModal.HasValue) return;
+        enviandoAccion = true;
+        try
+        {
+            var comentario = string.IsNullOrWhiteSpace(comentarioModal) ? null : comentarioModal.Trim();
+            var ok = esAprobarModal
+                ? await AprobacionService.MarcarAprobadoAsync(aprobacionIdModal.Value, UserService.UserId, comentario)
+                : await AprobacionService.MarcarRechazadoAsync(aprobacionIdModal.Value, UserService.UserId, comentario);
+            if (ok) { await CargarPendientes(); await CargarDatosAuditoria(); }
+        }
+        finally { enviandoAccion = false; }
+        await CerrarModalAprobarRechazar();
+    }
+}

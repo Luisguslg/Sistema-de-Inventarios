@@ -1,0 +1,106 @@
+@page "/admin/permisos-rol"
+@inject IRolService RolService
+@inject ToastService Toast
+@inject ICurrentUserService UserService
+
+<PageTitle>Permisos por rol</PageTitle>
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Permisos por rol</h1>
+        <p class="has-text-grey">Asigne permisos a cada rol. Los usuarios heredan los permisos de sus roles.</p>
+        <div class="buttons mt-2 mb-2">
+            <a href="@(PathBase.TrimEnd('/'))/api/export/PermisosRol/xlsx" class="button is-light is-small" target="_blank" download>Excel</a>
+            <a href="@(PathBase.TrimEnd('/'))/api/export/PermisosRol/pdf" class="button is-light is-small" target="_blank" download>PDF</a>
+        </div>
+        @if (loading) { <p>Cargando...</p> }
+        else
+        {
+            <div class="table-container mt-4">
+                <table class="table is-fullwidth is-striped">
+                    <thead>
+                        <tr>
+                            <th>Rol</th>
+                            @foreach (var p in permissions)
+                            {
+                                <th style="white-space: nowrap;" title="@p.Description">@p.Code</th>
+                            }
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in roles)
+                        {
+                            <tr>
+                                <td><strong>@r.Nombre</strong></td>
+                                @foreach (var p in permissions)
+                                {
+                                    var checkedIds = pending.GetValueOrDefault(r.Id) ?? new HashSet<Guid>();
+                                    var isChecked = checkedIds.Contains(p.Id);
+                                    <td>
+                                        <input type="checkbox" checked="@isChecked" @onchange="e => Toggle(r.Id, p.Id, (bool)e.Value!)" />
+                                    </td>
+                                }
+                                <td><button class="button is-small is-primary" @onclick="() => GuardarRol(r.Id)">Guardar</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private List<Role> roles = new();
+    private List<Permission> permissions = new();
+    private Dictionary<Guid, HashSet<Guid>> rolePerms = new();
+    private Dictionary<Guid, HashSet<Guid>> pending = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserService.HasPermission(IITS.Data.PermissionCodes.RolesManage) && !UserService.IsAdmin)
+        {
+            Toast.ShowToast("Sin permiso", ToastLevel.Warning);
+            return;
+        }
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        loading = true;
+        roles = await RolService.GetAllAsync();
+        permissions = await RolService.GetAllPermissionsAsync();
+        rolePerms = new Dictionary<Guid, HashSet<Guid>>();
+        foreach (var r in roles)
+            rolePerms[r.Id] = await RolService.GetRolePermissionIdsAsync(r.Id);
+        pending = new Dictionary<Guid, HashSet<Guid>>();
+        foreach (var k in rolePerms.Keys)
+            pending[k] = new HashSet<Guid>(rolePerms[k]);
+        loading = false;
+    }
+
+    private void Toggle(Guid roleId, Guid permissionId, bool add)
+    {
+        if (!pending.ContainsKey(roleId)) pending[roleId] = new HashSet<Guid>();
+        if (add) pending[roleId].Add(permissionId);
+        else pending[roleId].Remove(permissionId);
+    }
+
+    private async Task GuardarRol(Guid roleId)
+    {
+        if (!pending.TryGetValue(roleId, out var ids)) return;
+        try
+        {
+            await RolService.SetRolePermissionsAsync(roleId, ids);
+            rolePerms[roleId] = new HashSet<Guid>(ids);
+            Toast.ShowToast("Permisos guardados", ToastLevel.Success);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowToast(ex.Message, ToastLevel.Error);
+        }
+    }
+}

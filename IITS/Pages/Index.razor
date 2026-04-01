@@ -1,0 +1,264 @@
+@page "/"
+@inject ToastService toastService
+@inject DashboardService _dashboard
+@inject ICurrentUserService UserService
+@using IITS.Data
+
+@if (isLoading)
+{
+    <div class="pageloader is-active">
+        <span class="title">Cargando Dashboard...</span>
+    </div>
+}
+else
+{
+    <div class="container is-fluid" style="max-width: 100%;">
+        <div class="box fade-in">
+            <h1 class="Page-title">Dashboard de Inventarios</h1>
+            <p style="color: var(--kpmg-grey-2); margin-bottom: var(--space-md);">
+                Resumen general del sistema de inventarios IITS
+            </p>
+            @if (UserService.UserId == null && !string.IsNullOrEmpty(UserService.UserName))
+            {
+                <div class="notification is-warning is-light mb-4">
+                    <strong>Usuario no registrado.</strong> Está conectado como <strong>@UserService.UserName</strong>, pero este usuario no está en la base de datos. Solo verá Inicio; para acceder a inventarios y auditoría un administrador debe agregarlo en <a href="@(PathBase)admin/usuarios">Administración → Usuarios</a> y asignarle roles.
+                </div>
+            }
+            <div class="buttons are-small mb-5">
+                @if (UserService.IsAdmin || UserService.HasPermission(PermissionCodes.InventoryAplicaciones))
+                {
+                    <a class="button is-primary is-light" href="@(PathBase)aplicaciones">Aplicaciones</a>
+                }
+                @if (UserService.IsAdmin || UserService.HasPermission(PermissionCodes.InventoryOperaciones))
+                {
+                    <a class="button is-info is-light" href="@(PathBase)operaciones">Tecnología</a>
+                }
+                @if (UserService.IsAdmin || UserService.HasPermission(PermissionCodes.InventoryCuentas))
+                {
+                    <a class="button is-warning is-light" href="@(PathBase)cuentas">Gestión de Cuentas</a>
+                }
+            </div>
+
+            @if (_pendientesAprobacion > 0)
+            {
+                <div class="notification is-warning is-light mb-4">
+                    <strong>@_pendientesAprobacion</strong> solicitud(es) pendiente(s) de aprobación.
+                    <a href="@(PathBase)admin/aprobaciones">Ver aprobaciones</a>
+                </div>
+            }
+
+            <!-- Cards según permisos, ocupan espacio completo -->
+            <div class="columns is-multiline is-mobile">
+                @if (_canSeeAplicaciones)
+                {
+                <div class="column is-6-desktop is-6-tablet is-12-mobile">
+                    <div class="card-stat scale-in" style="animation-delay: 0.1s; border-top-color: var(--kpmg-blue);">
+                        <div class="card-stat-icon" style="color: var(--kpmg-blue);">
+                            <i class="mdi mdi-monitor-cellphone"></i>
+                        </div>
+                        <div class="card-stat-value">@_applicacionesTotal</div>
+                        <div class="card-stat-label">Aplicaciones</div>
+                        <div style="margin-top: var(--space-md);">
+                            <progress class="progress is-success" value="@_applicacionesAct" max="@_applicacionesTotal" style="height: 6px;"></progress>
+                        </div>
+                        <div style="display: flex; justify-content: space-around; margin-top: var(--space-sm); padding-top: var(--space-sm); border-top: 1px solid var(--kpmg-grey-5);">
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-green);">@_applicacionesAct</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Activos</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-orange, #e67e22);">@_applicacionesInact</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Inactivos</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-grey-3);">@_applicacionesDes</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Desinc.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                }
+
+                @if (_canSeeOperaciones)
+                {
+                <div class="column is-6-desktop is-6-tablet is-12-mobile">
+                    <div class="card-stat scale-in" style="animation-delay: 0.2s; border-top-color: var(--kpmg-cobalt);">
+                        <div class="card-stat-icon" style="color: var(--kpmg-cobalt);">
+                            <i class="mdi mdi-server"></i>
+                        </div>
+                        <div class="card-stat-value">@_operacionesTotal</div>
+                        <div class="card-stat-label">Tecnología</div>
+                        <div style="margin-top: var(--space-md);">
+                            <progress class="progress is-info" value="@_operacionesAct" max="@_operacionesTotal" style="height: 6px;"></progress>
+                        </div>
+                        <div style="display: flex; justify-content: space-around; margin-top: var(--space-sm); padding-top: var(--space-sm); border-top: 1px solid var(--kpmg-grey-5);">
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-green);">@_operacionesAct</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Activos</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-orange, #e67e22);">@_operacionesInact</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Inactivos</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-grey-3);">@_operacionesDes</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Desinc.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                }
+
+            </div>
+
+            <!-- Segunda fila: Cuentas (Servicio y Privilegiadas) según permiso -->
+            <div class="columns is-multiline is-mobile">
+                @if (_canSeeCuentas)
+                {
+                <!-- Cuentas de Servicio -->
+                <div class="column is-6-desktop is-6-tablet is-12-mobile">
+                    <div class="card-stat scale-in" style="animation-delay: 0.4s; border-top-color: var(--kpmg-purple);">
+                        <div class="card-stat-icon" style="color: var(--kpmg-purple);">
+                            <i class="mdi mdi-badge-account-horizontal-outline"></i>
+                        </div>
+                        <div class="card-stat-value">@_cuentaservicioTotal</div>
+                        <div class="card-stat-label">Cuentas de Servicio</div>
+                        <div style="margin-top: var(--space-md);">
+                            <progress class="progress is-warning" value="@_cuentaservicioAct" max="@_cuentaservicioTotal" style="height: 6px;"></progress>
+                        </div>
+                        <div style="display: flex; justify-content: space-around; margin-top: var(--space-sm); padding-top: var(--space-sm); border-top: 1px solid var(--kpmg-grey-5);">
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-green);">@_cuentaservicioAct</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Activos</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-orange, #e67e22);">@_cuentaservicioInact</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Inactivos</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-grey-3);">@_cuantaservicioDes</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Desinc.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cuentas Privilegiadas -->
+                <div class="column is-6-desktop is-6-tablet is-12-mobile">
+                    <div class="card-stat scale-in" style="animation-delay: 0.5s; border-top-color: var(--kpmg-pink);">
+                        <div class="card-stat-icon" style="color: var(--kpmg-pink);">
+                            <i class="mdi mdi-card-account-details-star"></i>
+                        </div>
+                        <div class="card-stat-value">@_usuariospriviTotal</div>
+                        <div class="card-stat-label">Cuentas Privilegiadas</div>
+                        <div style="margin-top: var(--space-md);">
+                            <progress class="progress is-danger" value="@_usuariospriviAct" max="@_usuariospriviTotal" style="height: 6px;"></progress>
+                        </div>
+                        <div style="display: flex; justify-content: space-around; margin-top: var(--space-sm); padding-top: var(--space-sm); border-top: 1px solid var(--kpmg-grey-5);">
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-green);">@_usuariospriviAct</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Activos</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-orange, #e67e22);">@_usuariospriviInact</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Inactivos</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); color: var(--kpmg-grey-3);">@_usuariosproviDes</div>
+                                <div style="font-size: var(--font-size-xs); color: var(--kpmg-grey-3);">Desinc.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                }
+            </div>
+
+            @if (_pendientesLista?.Count > 0 == true)
+            {
+                <div class="column is-12 mt-4">
+                    <div class="card">
+                        <header class="card-header">
+                            <p class="card-header-title">Pendientes de aprobación</p>
+                            <a href="@(PathBase)admin/aprobaciones" class="card-header-icon">Ver todo</a>
+                        </header>
+                        <div class="card-content">
+                            <table class="table is-narrow is-fullwidth">
+                                <thead><tr><th>Entidad</th><th>Id</th><th>Resumen</th><th>Fecha</th><th></th></tr></thead>
+                                <tbody>
+                                    @foreach (var p in _pendientesLista)
+                                    {
+                                        <tr>
+                                            <td>@p.EntityType</td>
+                                            <td>@p.EntityId</td>
+                                            <td>@(p.Summary.Length > 40 ? p.Summary[..40] + "..." : p.Summary)</td>
+                                            <td>@p.SubmittedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                                            <td><a href="@(PathBase)admin/aprobaciones" class="button is-small is-info">Aprobar</a></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private bool isLoading = true;
+    int _applicacionesTotal, _applicacionesAct, _applicacionesInact, _applicacionesDes;
+    int _pendientesAprobacion;
+    List<ApprovalRequestDto>? _pendientesLista;
+    int _operacionesTotal, _operacionesAct, _operacionesInact, _operacionesDes;
+    int _cuentaservicioTotal, _cuentaservicioAct, _cuentaservicioInact, _cuantaservicioDes;
+    int _usuariospriviTotal, _usuariospriviAct, _usuariospriviInact, _usuariosproviDes;
+    bool _canSeeAplicaciones, _canSeeOperaciones, _canSeeCuentas;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPage();
+    }
+
+    private async Task LoadPage()
+    {
+        try
+        {
+            isLoading = true;
+            var status = _dashboard.GetEstatusIds();
+            if (status == null) return;
+            var (idActivo, idInactivo, idDesinc) = (status.Value.Activo, status.Value.Inactivo, status.Value.Desincorporado);
+
+            var rApp = _dashboard.GetResumenAplicaciones(idActivo, idInactivo, idDesinc);
+            _applicacionesTotal = rApp.Total; _applicacionesAct = rApp.Activos; _applicacionesInact = rApp.Inactivos; _applicacionesDes = rApp.Desincorporados;
+
+            var rOp = _dashboard.GetResumenOperaciones(idActivo, idInactivo, idDesinc);
+            _operacionesTotal = rOp.Total; _operacionesAct = rOp.Activos; _operacionesInact = rOp.Inactivos; _operacionesDes = rOp.Desincorporados;
+
+            var rCp = _dashboard.GetResumenCuentasPrivilegiadas(idActivo, idInactivo, idDesinc);
+            _usuariospriviTotal = rCp.Total; _usuariospriviAct = rCp.Activos; _usuariospriviInact = rCp.Inactivos; _usuariosproviDes = rCp.Desincorporados;
+
+            var rCs = _dashboard.GetResumenCuentasServicio(idActivo, idInactivo, idDesinc);
+            _cuentaservicioTotal = rCs.Total; _cuentaservicioAct = rCs.Activos; _cuentaservicioInact = rCs.Inactivos; _cuantaservicioDes = rCs.Desincorporados;
+
+            _pendientesAprobacion = await _dashboard.GetPendingApprovalCountAsync();
+            _pendientesLista = await _dashboard.GetPendingApprovalsAsync(10);
+
+            _canSeeAplicaciones = UserService.IsAdmin || UserService.HasPermission(PermissionCodes.InventoryAplicaciones);
+            _canSeeOperaciones = UserService.IsAdmin || UserService.HasPermission(PermissionCodes.InventoryOperaciones);
+            _canSeeCuentas = UserService.IsAdmin || UserService.HasPermission(PermissionCodes.InventoryCuentas);
+        }
+        catch (Exception ex)
+        {
+            toastService.ShowToast("Error: " + ex.Message, ToastLevel.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

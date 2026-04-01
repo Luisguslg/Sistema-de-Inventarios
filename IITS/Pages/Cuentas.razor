@@ -1,0 +1,730 @@
+@page "/cuentas"
+@inject IITS.Data.AppDbContext Db
+@inject IITS.Services.ToastService Toast
+@inject IITS.Services.IAprobacionService AprobacionService
+@inject IITS.Services.IEmailOutboxService EmailOutboxService
+@inject IITS.Services.IAprobacionPermisoService AprobacionPermisoService
+@inject IITS.Services.IAuditLogService AuditLogService
+@inject IITS.Services.ICurrentUserService UserService
+@inject IConfiguration Config
+@inject NavigationManager Nav
+
+<PageTitle>Cuentas</PageTitle>
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Cuentas</h1>
+        <p class="has-text-grey">Cuentas privilegiadas y de servicio. Área, responsable, origen y servicio relacionado.</p>
+        <div class="filtros-acciones-row mt-4">
+            <div class="field mb-0">
+                <label class="label">Tipo</label>
+                <div class="control">
+                    <select class="select-clean" @bind="filtroTipo">
+                        <option value="">Todas</option>
+                        <option value="Privilegiada">Privilegiadas</option>
+                        <option value="Servicio">Servicio</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field mb-0">
+                <label class="label">Estatus</label>
+                <div class="control">
+                    <select class="select-clean" @bind="filtroEstatus">
+                        <option value="">Todos</option>
+                        <option value="Activo">Activo</option>
+                        <option value="Inactivo">Inactivo</option>
+                        <option value="Desincorporado">Desincorporado</option>
+                    </select>
+                </div>
+            </div>
+            <div class="buttons mb-0">
+                <button class="button is-primary" @onclick="AbrirNuevo">Nueva cuenta</button>
+                <IITS.Shared.ExportarDropdown Modulo="Cuentas" PathBase="@(PathBase ?? "/")" Tipo="@filtroTipo" Estatus="@filtroEstatus" />
+            </div>
+        </div>
+        @if (loading) { <p>Cargando...</p> }
+        else
+        {
+            <div class="table-container mt-4" style="overflow-x: auto;">
+                <table class="table is-fullwidth is-striped">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Nombre</th>
+                            <th>Área</th>
+                            <th>Responsable</th>
+                            <th>Origen</th>
+                            <th>Servicio relacionado</th>
+                            <th>Estatus</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in itemsFiltrados)
+                        {
+                            <tr>
+                                <td>@item.Tipo</td>
+                                <td>@Na(item.Nombre)</td>
+                                <td>@Na(item.AreaName)</td>
+                                <td>@Na(item.Responsable)</td>
+                                <td>@Na(item.Origen)</td>
+                                <td>@Na(item.AplicacionNombre ?? item.ServicioRelacionado)</td>
+                                <td>@Na(estatusDict.GetValueOrDefault(item.EstatusId)?.Nombre)</td>
+                                <td>
+                                    @if (idsPorAprobar.Contains(item.Id)) { <span class="tag is-warning is-light mr-2">Por aprobar</span> }
+                                    <button class="button is-small is-info is-light" @onclick="() => AbrirEditar(item)">Editar</button>
+                                    <button class="button is-small is-danger is-light" @onclick="() => Eliminar(item)">Eliminar</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (!itemsFiltrados.Any()) { <p class="has-text-grey">No hay registros.</p> }
+        }
+    </div>
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModal"></div>
+        <div class="modal-card" style="max-width: 520px;">
+            <header class="modal-card-head">
+                <p class="modal-card-title">@(editingItem == null ? "Nueva cuenta" : "Editar cuenta")</p>
+                <button class="delete" @onclick="CerrarModal"></button>
+            </header>
+            <section class="modal-card-body">
+                <div class="field">
+                    <label class="label">Tipo de cuenta *</label>
+                    <div class="control">
+                        <select class="select-clean" @bind="formTipo">
+                            <option value="Privilegiada">Privilegiada</option>
+                            <option value="Servicio">Servicio</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">Nombre de la cuenta *</label>
+                    <div class="control">
+                        <input class="input" @bind="formNombre" placeholder="Nombre en AD o en la aplicación" />
+                    </div>
+                </div>
+                @if (areasList.Any())
+                {
+                    <div class="field">
+                        <label class="label">Área *</label>
+                        <div class="control">
+                            <select class="select-clean" @bind="formAreaIdStr">
+                                <option value="">—</option>
+                                @foreach (var a in areasList)
+                                {
+                                    <option value="@a.Id">@a.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                }
+                <div class="field">
+                    <label class="label">Responsable *</label>
+                    <div class="control">
+                        <input class="input" @bind="formResponsable" placeholder="Custodio de la cuenta" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">Origen *</label>
+                    <div class="control">
+                        <select class="select-clean" @bind="formOrigen">
+                            <option value="">—</option>
+                            <option value="Active Directory">Active Directory</option>
+                            <option value="Local">Local</option>
+                        </select>
+                    </div>
+                </div>
+                @if (aplicacionesList.Any())
+                {
+                    <div class="field">
+                        <label class="label">Servicio/Aplicación (del área de aplicaciones) *</label>
+                        <div class="control">
+                            <select class="select-clean" @bind="formAplicacionIdStr">
+                                <option value="">—</option>
+                                <option value="__NA__">N/A</option>
+                                @foreach (var app in aplicacionesList)
+                                {
+                                    <option value="@app.Id">@app.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                }
+                @if (MostrarCampoServicioCustom)
+                {
+                    <div class="field">
+                        <label class="label">Servicio/Aplicación *</label>
+                        <div class="control is-flex is-align-items-center gap-1">
+                            <select class="select-clean" @bind="formServicioRelacionado" style="flex:1;">
+                                <option value="">—</option>
+                                @foreach (var s in servicioAplicacionList)
+                                {
+                                    <option value="@s.Name">@s.Name</option>
+                                }
+                            </select>
+                            <button type="button" class="button is-small is-light" @onclick="AbrirAgregarServicioAplicacion" title="Agregar">+</button>
+                        </div>
+                    </div>
+                }
+                <div class="field">
+                    <label class="label">Tipo configuración de cambio *</label>
+                    <div class="control">
+                        <select class="select-clean" @bind="formTipoConfiguracionCambio">
+                            <option value="">—</option>
+                            <option value="Automático">Automático</option>
+                            <option value="Manual">Manual</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">Intervalo de cambio (días) *</label>
+                    <div class="control">
+                        <input class="input" type="number" min="0" @bind="formIntervaloCambioDiasStr" placeholder="Cantidad de días para el cambio de credenciales" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">Grupos de Seguridad *</label>
+                    <div class="control">
+                        <textarea class="textarea" rows="3" @bind="formGruposSeguridad" placeholder="Uno por línea. Ej: DOMAIN\Grupo1"></textarea>
+                        <p class="help is-size-7">Lista de grupos a los que pertenece la cuenta (uno por línea)</p>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">Descripción</label>
+                    <div class="control">
+                        <textarea class="textarea" rows="2" @bind="formDescripcion" placeholder="Opcional"></textarea>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">Estatus *</label>
+                    <div class="control">
+                        <select class="select-clean" @bind="formEstatusIdStr">
+                            @foreach (var e in estatusList)
+                            {
+                                <option value="@e.Id">@e.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </section>
+            <footer class="modal-card-foot">
+                <button class="button is-primary" @onclick="Guardar">Guardar</button>
+                <button class="button" @onclick="CerrarModal">Cancelar</button>
+            </footer>
+        </div>
+    </div>
+}
+
+@* Modal agregar Servicio/Aplicación (cuando no es del área de aplicaciones) *@
+@if (mostrarModalServicioAplicacion)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModalServicioAplicacion"></div>
+        <div class="modal-card" style="max-width: 360px;">
+            <header class="modal-card-head"><p class="modal-card-title">Agregar Servicio/Aplicación</p><button class="delete" @onclick="CerrarModalServicioAplicacion"></button></header>
+            <section class="modal-card-body">
+                <div class="field"><label class="label">Nombre</label><div class="control"><input class="input" @bind="newServicioAplicacionNombre" placeholder="Ej. SAP, Correo interno" /></div></div>
+            </section>
+            <footer class="modal-card-foot"><button class="button is-primary" @onclick="GuardarAgregarServicioAplicacion">Agregar</button><button class="button" @onclick="CerrarModalServicioAplicacion">Cancelar</button></footer>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private static string Na(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : s;
+    private class ItemCuenta
+    {
+        public Guid Id { get; set; }
+        public string Nombre { get; set; } = "";
+        public Guid EstatusId { get; set; }
+        public string Tipo { get; set; } = "";
+        public Guid? AreaId { get; set; }
+        public string? AreaName { get; set; }
+        public string? Responsable { get; set; }
+        public string? Origen { get; set; }
+        public Guid? AplicacionId { get; set; }
+        public string? AplicacionNombre { get; set; }
+        public string? ServicioRelacionado { get; set; }
+        public string? TipoConfiguracionCambio { get; set; }
+        public int? IntervaloCambioDias { get; set; }
+        public string? GruposSeguridad { get; set; }
+        public string? Descripcion { get; set; }
+    }
+
+    private List<ItemCuenta> items = new();
+    private List<Estatus> estatusList = new();
+    private List<Area> areasList = new();
+    private List<Aplicacion> aplicacionesList = new();
+    private List<IITS.Entities.CatalogItem> servicioAplicacionList = new();
+    private bool mostrarModalServicioAplicacion = false;
+    private string newServicioAplicacionNombre = "";
+
+    private bool MostrarCampoServicioCustom => formAplicacionIdStr == "__NA__" || !aplicacionesList.Any();
+    private Dictionary<Guid, Estatus> estatusDict = new();
+    private bool loading = true;
+    private bool mostrarModal = false;
+    private string filtroTipo = "";
+    private string filtroEstatus = "";
+    private string formTipo = "Privilegiada";
+    private string formNombre = "";
+    private string formAreaIdStr = "";
+    private string formResponsable = "";
+    private string formOrigen = "";
+    private string formAplicacionIdStr = "";
+    private string formServicioRelacionado = "";
+    private string formTipoConfiguracionCambio = "";
+    private string formIntervaloCambioDiasStr = "";
+    private string formGruposSeguridad = "";
+    private string formDescripcion = "";
+    private string formEstatusIdStr = "";
+    private ItemCuenta? editingItem = null;
+    private HashSet<Guid> idsPorAprobar = new();
+
+    private IEnumerable<ItemCuenta> itemsFiltrados
+    {
+        get
+        {
+            var r = items.AsEnumerable();
+            if (!string.IsNullOrEmpty(filtroTipo)) r = r.Where(x => x.Tipo == filtroTipo);
+            if (!string.IsNullOrEmpty(filtroEstatus))
+            {
+                var est = estatusList.FirstOrDefault(e => e.Nombre == filtroEstatus);
+                if (est != null) r = r.Where(x => x.EstatusId == est.Id);
+            }
+            return r;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        if (query.TryGetValue("tipo", out var tVal) && !string.IsNullOrEmpty(tVal)) filtroTipo = tVal.ToString();
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        loading = true;
+        estatusList = await Db.Estatus.AsNoTracking().OrderBy(e => e.Codigo).ToListAsync();
+        estatusDict = estatusList.ToDictionary(e => e.Id);
+        var areasExisten = await Db.TableExistsAsync("Areas");
+        if (areasExisten)
+            areasList = await Db.Areas.AsNoTracking().OrderBy(a => a.Name).ToListAsync();
+        if (await Db.TableExistsAsync("Aplicaciones"))
+            aplicacionesList = await Db.Aplicaciones.AsNoTracking().OrderBy(a => a.Nombre).ToListAsync();
+        else
+            aplicacionesList = new List<Aplicacion>();
+        if (await Db.TableExistsAsync("CatalogItems"))
+            servicioAplicacionList = await Db.CatalogItems.AsNoTracking().Where(c => c.Kind == "ServicioAplicacion").OrderBy(c => c.Name).ToListAsync();
+        else
+            servicioAplicacionList = new List<IITS.Entities.CatalogItem>();
+        List<ItemCuenta> listado = new();
+        if (areasExisten)
+        {
+            var priv = await Db.CuentasPrivilegiadas.AsNoTracking().Include(c => c.Area).Include(c => c.Aplicacion).OrderBy(x => x.Nombre).ToListAsync();
+            var serv = await Db.CuentasServicio.AsNoTracking().Include(c => c.Area).Include(c => c.Aplicacion).OrderBy(x => x.Nombre).ToListAsync();
+            listado = priv.Select(p => new ItemCuenta
+            {
+                Id = p.Id,
+                Nombre = p.Nombre ?? "",
+                EstatusId = p.EstatusId,
+                Tipo = "Privilegiada",
+                AreaId = p.AreaId,
+                AreaName = p.Area?.Name,
+                AplicacionId = p.AplicacionId,
+                AplicacionNombre = p.Aplicacion?.Nombre,
+                Responsable = p.Responsable,
+                Origen = p.Origen,
+                ServicioRelacionado = p.ServicioRelacionado,
+                TipoConfiguracionCambio = p.TipoConfiguracionCambio,
+                IntervaloCambioDias = p.IntervaloCambioDias,
+                GruposSeguridad = p.GruposSeguridad,
+                Descripcion = p.Descripcion
+            }).Concat(serv.Select(s => new ItemCuenta
+            {
+                Id = s.Id,
+                Nombre = s.Nombre ?? "",
+                EstatusId = s.EstatusId,
+                Tipo = "Servicio",
+                AreaId = s.AreaId,
+                AreaName = s.Area?.Name,
+                AplicacionId = s.AplicacionId,
+                AplicacionNombre = s.Aplicacion?.Nombre,
+                Responsable = s.Responsable,
+                Origen = s.Origen,
+                ServicioRelacionado = s.ServicioRelacionado,
+                TipoConfiguracionCambio = s.TipoConfiguracionCambio,
+                IntervaloCambioDias = s.IntervaloCambioDias,
+                GruposSeguridad = s.GruposSeguridad,
+                Descripcion = s.Descripcion
+            })).OrderBy(x => x.Tipo).ThenBy(x => x.Nombre).ToList();
+        }
+        else
+        {
+            var priv = await Db.CuentasPrivilegiadas.AsNoTracking().Include(c => c.Aplicacion).OrderBy(x => x.Nombre).ToListAsync();
+            var serv = await Db.CuentasServicio.AsNoTracking().Include(c => c.Aplicacion).OrderBy(x => x.Nombre).ToListAsync();
+            listado = priv.Select(p => new ItemCuenta
+            {
+                Id = p.Id,
+                Nombre = p.Nombre ?? "",
+                EstatusId = p.EstatusId,
+                Tipo = "Privilegiada",
+                AreaId = p.AreaId,
+                AreaName = null,
+                AplicacionId = p.AplicacionId,
+                AplicacionNombre = p.Aplicacion?.Nombre,
+                Responsable = p.Responsable,
+                Origen = p.Origen,
+                ServicioRelacionado = p.ServicioRelacionado,
+                TipoConfiguracionCambio = p.TipoConfiguracionCambio,
+                IntervaloCambioDias = p.IntervaloCambioDias,
+                GruposSeguridad = p.GruposSeguridad,
+                Descripcion = p.Descripcion
+            }).Concat(serv.Select(s => new ItemCuenta
+            {
+                Id = s.Id,
+                Nombre = s.Nombre ?? "",
+                EstatusId = s.EstatusId,
+                Tipo = "Servicio",
+                AreaId = s.AreaId,
+                AreaName = null,
+                AplicacionId = s.AplicacionId,
+                AplicacionNombre = s.Aplicacion?.Nombre,
+                Responsable = s.Responsable,
+                Origen = s.Origen,
+                ServicioRelacionado = s.ServicioRelacionado,
+                TipoConfiguracionCambio = s.TipoConfiguracionCambio,
+                IntervaloCambioDias = s.IntervaloCambioDias,
+                GruposSeguridad = s.GruposSeguridad,
+                Descripcion = s.Descripcion
+            })).OrderBy(x => x.Tipo).ThenBy(x => x.Nombre).ToList();
+        }
+        items = listado;
+        try { idsPorAprobar = await AprobacionService.GetEntidadIdsPendientesAsync("Cuentas"); } catch { idsPorAprobar = new HashSet<Guid>(); }
+        loading = false;
+    }
+
+    private void AbrirNuevo()
+    {
+        editingItem = null;
+        formTipo = "Privilegiada";
+        formNombre = "";
+        formAreaIdStr = "";
+        formResponsable = "";
+        formOrigen = "";
+        formAplicacionIdStr = "";
+        formServicioRelacionado = "";
+        formTipoConfiguracionCambio = "";
+        formIntervaloCambioDiasStr = "";
+        formGruposSeguridad = "";
+        formDescripcion = "";
+        formEstatusIdStr = estatusList.FirstOrDefault(e => e.Codigo == 1000)?.Id.ToString() ?? "";
+        mostrarModal = true;
+    }
+
+    private void AbrirEditar(ItemCuenta item)
+    {
+        editingItem = item;
+        formTipo = item.Tipo;
+        formNombre = item.Nombre;
+        formAreaIdStr = item.AreaId?.ToString() ?? "";
+        formResponsable = item.Responsable ?? "";
+        formOrigen = item.Origen ?? "";
+        formAplicacionIdStr = item.AplicacionId.HasValue ? item.AplicacionId.Value.ToString() : "__NA__";
+        formServicioRelacionado = item.ServicioRelacionado ?? "";
+        formTipoConfiguracionCambio = item.TipoConfiguracionCambio ?? "";
+        formIntervaloCambioDiasStr = item.IntervaloCambioDias?.ToString() ?? "";
+        formGruposSeguridad = item.GruposSeguridad ?? "";
+        formDescripcion = item.Descripcion ?? "";
+        formEstatusIdStr = item.EstatusId.ToString();
+        mostrarModal = true;
+    }
+
+    private void CerrarModal() => mostrarModal = false;
+
+    private void AbrirAgregarServicioAplicacion() { newServicioAplicacionNombre = ""; mostrarModalServicioAplicacion = true; }
+    private void CerrarModalServicioAplicacion() => mostrarModalServicioAplicacion = false;
+    private async Task GuardarAgregarServicioAplicacion()
+    {
+        var nombre = newServicioAplicacionNombre?.Trim() ?? "";
+        if (string.IsNullOrEmpty(nombre)) { Toast.ShowToast("El nombre es requerido.", IITS.Services.ToastLevel.Warning); return; }
+        if (await Db.CatalogItems.AnyAsync(c => c.Kind == "ServicioAplicacion" && c.Name == nombre))
+        {
+            Toast.ShowToast("Ya existe un Servicio/Aplicación con ese nombre.", IITS.Services.ToastLevel.Warning);
+            return;
+        }
+        Db.CatalogItems.Add(new IITS.Entities.CatalogItem { Id = Guid.NewGuid(), Kind = "ServicioAplicacion", Name = nombre });
+        await Db.SaveChangesAsync();
+        servicioAplicacionList = await Db.CatalogItems.AsNoTracking().Where(c => c.Kind == "ServicioAplicacion").OrderBy(c => c.Name).ToListAsync();
+        formServicioRelacionado = nombre;
+        mostrarModalServicioAplicacion = false;
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre)) { Toast.ShowToast("Nombre de la cuenta es requerido.", IITS.Services.ToastLevel.Warning); return; }
+        if (areasList.Any() && !Guid.TryParse(formAreaIdStr, out _)) { Toast.ShowToast("Área es requerida.", IITS.Services.ToastLevel.Warning); return; }
+        if (string.IsNullOrWhiteSpace(formResponsable?.Trim())) { Toast.ShowToast("Responsable es requerido.", IITS.Services.ToastLevel.Warning); return; }
+        if (string.IsNullOrWhiteSpace(formOrigen?.Trim())) { Toast.ShowToast("Origen es requerido (Active Directory o Local).", IITS.Services.ToastLevel.Warning); return; }
+        var usaListaAplicaciones = formAplicacionIdStr != "__NA__" && Guid.TryParse(formAplicacionIdStr, out var appIdAux) && appIdAux != Guid.Empty;
+        var usaServicioCustom = MostrarCampoServicioCustom && !string.IsNullOrWhiteSpace(formServicioRelacionado?.Trim());
+        if (!usaListaAplicaciones && !usaServicioCustom) { Toast.ShowToast("Servicio/Aplicación es requerido (seleccione del área de aplicaciones, N/A con valor en el otro campo, o agregue uno con +).", IITS.Services.ToastLevel.Warning); return; }
+        if (string.IsNullOrWhiteSpace(formTipoConfiguracionCambio?.Trim())) { Toast.ShowToast("Tipo configuración de cambio es requerido (Automático o Manual).", IITS.Services.ToastLevel.Warning); return; }
+        if (!int.TryParse(formIntervaloCambioDiasStr, out var intervaloDias) || intervaloDias < 0) { Toast.ShowToast("Intervalo de cambio (días) es requerido y debe ser un número mayor o igual a 0.", IITS.Services.ToastLevel.Warning); return; }
+        var gruposSeg = formGruposSeguridad?.Trim();
+        if (string.IsNullOrWhiteSpace(gruposSeg)) { Toast.ShowToast("Grupos de Seguridad es requerido (al menos uno, uno por línea).", IITS.Services.ToastLevel.Warning); return; }
+        if (!Guid.TryParse(formEstatusIdStr, out var eid)) return;
+        Guid? areaId = Guid.TryParse(formAreaIdStr, out var aid) ? aid : null;
+        Guid? aplicacionId = (formAplicacionIdStr != "__NA__" && Guid.TryParse(formAplicacionIdStr, out var appId) && appId != Guid.Empty) ? appId : null;
+        var responsable = formResponsable.Trim();
+        var origen = formOrigen.Trim();
+        var servicioRel = (formAplicacionIdStr == "__NA__" || aplicacionId == null) && !string.IsNullOrWhiteSpace(formServicioRelacionado) ? formServicioRelacionado.Trim() : null;
+        var tipoConfig = formTipoConfiguracionCambio?.Trim();
+        var descripcion = string.IsNullOrWhiteSpace(formDescripcion) ? null : formDescripcion.Trim();
+        var gruposSeguridadNorm = string.Join("\n", gruposSeg.Split('\n', '\r').Select(s => s.Trim()).Where(s => s.Length > 0));
+
+        var nombreNorm = formNombre.Trim();
+        Guid entidadId = editingItem?.Id ?? Guid.Empty;
+        string? cambiosHtmlParaEmail = null;
+        if (editingItem == null)
+        {
+            var newId = Guid.NewGuid();
+            entidadId = newId;
+            if (formTipo == "Privilegiada")
+            {
+                var existentes = await Db.CuentasPrivilegiadas.AsNoTracking().Select(c => c.Nombre).ToListAsync();
+                if (existentes.Any(n => string.Equals(n.Trim(), nombreNorm, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Toast.ShowToast("Ya existe una cuenta privilegiada con ese nombre.", IITS.Services.ToastLevel.Warning);
+                    return;
+                }
+                Db.CuentasPrivilegiadas.Add(new CuentaPrivilegiada
+                {
+                    Id = newId,
+                    Nombre = nombreNorm,
+                    EstatusId = eid,
+                    AreaId = areaId,
+                    AplicacionId = aplicacionId,
+                    Responsable = responsable,
+                    Origen = origen,
+                    ServicioRelacionado = servicioRel,
+                    TipoConfiguracionCambio = tipoConfig,
+                    IntervaloCambioDias = intervaloDias,
+                    GruposSeguridad = gruposSeguridadNorm,
+                    Descripcion = descripcion,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                var existentes = await Db.CuentasServicio.AsNoTracking().Select(c => c.Nombre).ToListAsync();
+                if (existentes.Any(n => string.Equals(n.Trim(), nombreNorm, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Toast.ShowToast("Ya existe una cuenta de servicio con ese nombre.", IITS.Services.ToastLevel.Warning);
+                    return;
+                }
+                Db.CuentasServicio.Add(new CuentaServicio
+                {
+                    Id = newId,
+                    Nombre = nombreNorm,
+                    EstatusId = eid,
+                    AreaId = areaId,
+                    AplicacionId = aplicacionId,
+                    Responsable = responsable,
+                    Origen = origen,
+                    ServicioRelacionado = servicioRel,
+                    TipoConfiguracionCambio = tipoConfig,
+                    IntervaloCambioDias = intervaloDias,
+                    GruposSeguridad = gruposSeguridadNorm,
+                    Descripcion = descripcion,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        else
+        {
+            var tipoCambio = formTipo != editingItem.Tipo;
+            if (tipoCambio)
+            {
+                if (editingItem.Tipo == "Privilegiada")
+                {
+                    var e = await Db.CuentasPrivilegiadas.FindAsync(editingItem.Id);
+                    if (e != null) Db.CuentasPrivilegiadas.Remove(e);
+                }
+                else
+                {
+                    var e = await Db.CuentasServicio.FindAsync(editingItem.Id);
+                    if (e != null) Db.CuentasServicio.Remove(e);
+                }
+                await Db.SaveChangesAsync();
+                var newId = Guid.NewGuid();
+                entidadId = newId;
+                if (formTipo == "Privilegiada")
+                {
+                    var existentes = await Db.CuentasPrivilegiadas.AsNoTracking().Select(c => c.Nombre).ToListAsync();
+                    if (existentes.Any(n => string.Equals(n.Trim(), nombreNorm, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Toast.ShowToast("Ya existe una cuenta privilegiada con ese nombre.", IITS.Services.ToastLevel.Warning);
+                        return;
+                    }
+                    Db.CuentasPrivilegiadas.Add(new CuentaPrivilegiada
+                    {
+                        Id = newId,
+                        Nombre = nombreNorm,
+                        EstatusId = eid,
+                        AreaId = areaId,
+                        AplicacionId = aplicacionId,
+                        Responsable = responsable,
+                        Origen = origen,
+                        ServicioRelacionado = servicioRel,
+                        TipoConfiguracionCambio = tipoConfig,
+                        IntervaloCambioDias = intervaloDias,
+                        GruposSeguridad = gruposSeguridadNorm,
+                        Descripcion = descripcion,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    var existentes = await Db.CuentasServicio.AsNoTracking().Select(c => c.Nombre).ToListAsync();
+                    if (existentes.Any(n => string.Equals(n.Trim(), nombreNorm, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Toast.ShowToast("Ya existe una cuenta de servicio con ese nombre.", IITS.Services.ToastLevel.Warning);
+                        return;
+                    }
+                    Db.CuentasServicio.Add(new CuentaServicio
+                    {
+                        Id = newId,
+                        Nombre = nombreNorm,
+                        EstatusId = eid,
+                        AreaId = areaId,
+                        AplicacionId = aplicacionId,
+                        Responsable = responsable,
+                        Origen = origen,
+                        ServicioRelacionado = servicioRel,
+                        TipoConfiguracionCambio = tipoConfig,
+                        IntervaloCambioDias = intervaloDias,
+                        GruposSeguridad = gruposSeguridadNorm,
+                        Descripcion = descripcion,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                cambiosHtmlParaEmail = $"Tipo de cuenta cambió de {editingItem.Tipo} a {formTipo}. Resto de datos actualizados.";
+            }
+            else
+            {
+                entidadId = editingItem.Id;
+                var cambios = new List<string>();
+                if ((editingItem.Nombre ?? "").Trim() != nombreNorm) cambios.Add($"Nombre: {editingItem.Nombre ?? "-"} → {nombreNorm}");
+                if (editingItem.EstatusId != eid) cambios.Add($"Estatus: (cambió)");
+                if (editingItem.AreaId != areaId) cambios.Add($"Área: (cambió)");
+                if ((editingItem.Responsable ?? "").Trim() != responsable) cambios.Add($"Responsable: {editingItem.Responsable ?? "-"} → {responsable}");
+                if ((editingItem.Origen ?? "").Trim() != origen) cambios.Add($"Origen: {editingItem.Origen ?? "-"} → {origen}");
+                if (editingItem.AplicacionId != aplicacionId || (editingItem.ServicioRelacionado ?? "").Trim() != (servicioRel ?? "")) cambios.Add($"Servicio/Aplicación: (cambió)");
+                if ((editingItem.TipoConfiguracionCambio ?? "").Trim() != tipoConfig) cambios.Add($"Tipo config. cambio: {editingItem.TipoConfiguracionCambio ?? "-"} → {tipoConfig}");
+                if (editingItem.IntervaloCambioDias != intervaloDias) cambios.Add($"Intervalo (días): {editingItem.IntervaloCambioDias} → {intervaloDias}");
+                if ((editingItem.GruposSeguridad ?? "").Trim() != gruposSeguridadNorm) cambios.Add($"Grupos seguridad: (cambió)");
+                if ((editingItem.Descripcion ?? "").Trim() != (descripcion ?? "")) cambios.Add($"Descripción: {editingItem.Descripcion ?? "-"} → {descripcion ?? "-"}");
+                cambiosHtmlParaEmail = cambios.Count > 0 ? string.Join("<br/>", cambios.Select(c => System.Net.WebUtility.HtmlEncode(c))) : null;
+                if (editingItem.Tipo == "Privilegiada")
+                {
+                    var existentes = await Db.CuentasPrivilegiadas.AsNoTracking().Where(c => c.Id != editingItem.Id).Select(c => c.Nombre).ToListAsync();
+                    if (existentes.Any(n => string.Equals(n.Trim(), nombreNorm, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Toast.ShowToast("Ya existe otra cuenta privilegiada con ese nombre.", IITS.Services.ToastLevel.Warning);
+                        return;
+                    }
+                    var e = await Db.CuentasPrivilegiadas.FindAsync(editingItem.Id);
+                    if (e != null)
+                    {
+                        e.Nombre = nombreNorm;
+                        e.EstatusId = eid;
+                        e.AreaId = areaId;
+                        e.AplicacionId = aplicacionId;
+                        e.Responsable = responsable;
+                        e.Origen = origen;
+                        e.ServicioRelacionado = servicioRel;
+                        e.TipoConfiguracionCambio = tipoConfig;
+                        e.IntervaloCambioDias = intervaloDias;
+                        e.GruposSeguridad = gruposSeguridadNorm;
+                        e.Descripcion = descripcion;
+                    }
+                }
+                else
+                {
+                    var existentes = await Db.CuentasServicio.AsNoTracking().Where(c => c.Id != editingItem.Id).Select(c => c.Nombre).ToListAsync();
+                    if (existentes.Any(n => string.Equals(n.Trim(), nombreNorm, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Toast.ShowToast("Ya existe otra cuenta de servicio con ese nombre.", IITS.Services.ToastLevel.Warning);
+                        return;
+                    }
+                    var e = await Db.CuentasServicio.FindAsync(editingItem.Id);
+                    if (e != null)
+                    {
+                        e.Nombre = nombreNorm;
+                        e.EstatusId = eid;
+                        e.AreaId = areaId;
+                        e.AplicacionId = aplicacionId;
+                        e.Responsable = responsable;
+                        e.Origen = origen;
+                        e.ServicioRelacionado = servicioRel;
+                        e.TipoConfiguracionCambio = tipoConfig;
+                        e.IntervaloCambioDias = intervaloDias;
+                        e.GruposSeguridad = gruposSeguridadNorm;
+                        e.Descripcion = descripcion;
+                    }
+                }
+            }
+        }
+        await Db.SaveChangesAsync();
+
+        var esModificacion = editingItem != null;
+        await AuditLogService.RegistrarAsync("Cuentas", entidadId, esModificacion ? "Actualizar" : "Crear", $"Cuenta: {nombreNorm}", UserService.UserId);
+        await AprobacionService.RegistrarAsync("Cuentas", entidadId, "Por aprobar", esModificacion ? "Modificación de cuenta" : "Alta de cuenta", UserService.UserId);
+        try { await NotificarAprobadoresCuentasAsync(entidadId, nombreNorm, esModificacion, cambiosHtmlParaEmail); } catch { }
+
+        CerrarModal();
+        await Cargar();
+    }
+
+    private async Task NotificarAprobadoresCuentasAsync(Guid entidadId, string nombreCuenta, bool esModificacion = false, string? cambiosHtml = null)
+    {
+        var aprobadores = await AprobacionPermisoService.GetApproversForModuloAsync("Cuentas");
+        var accion = esModificacion ? "Modificación de cuenta" : "Alta de cuenta";
+        var subject = $"IITS: Solicitud por aprobar - Cuentas - {System.Net.WebUtility.HtmlEncode(nombreCuenta)}";
+        var body = "<p>Se ha registrado una solicitud pendiente de aprobación.</p>";
+        body += "<p><strong>Módulo:</strong> Cuentas<br/><strong>Acción:</strong> " + System.Net.WebUtility.HtmlEncode(accion) + "<br/><strong>Nombre cuenta:</strong> " + System.Net.WebUtility.HtmlEncode(nombreCuenta) + "</p>";
+        if (!string.IsNullOrEmpty(cambiosHtml))
+            body += "<p><strong>Detalle de cambios (antes → después):</strong></p><p style=\"margin-left:1em;font-family:monospace;\">" + cambiosHtml + "</p>";
+        var baseUrl = Config["App:BaseUrl"]?.TrimEnd('/');
+        if (!string.IsNullOrEmpty(baseUrl))
+            body += "<p><a href=\"" + System.Net.WebUtility.HtmlEncode(baseUrl) + "/auditoria/cuentas\" style=\"color:#00338d;\">Ir a IITS para aprobar o rechazar</a></p>";
+        foreach (var u in aprobadores)
+        {
+            if (string.IsNullOrWhiteSpace(u.Email)) continue;
+            try { await EmailOutboxService.EnqueueAsync(u.Email, subject, body); } catch { }
+        }
+    }
+
+    private async Task Eliminar(ItemCuenta item)
+    {
+        if (item.Tipo == "Privilegiada")
+        {
+            var e = await Db.CuentasPrivilegiadas.FindAsync(item.Id);
+            if (e != null) { Db.CuentasPrivilegiadas.Remove(e); await Db.SaveChangesAsync(); await Cargar(); }
+        }
+        else
+        {
+            var e = await Db.CuentasServicio.FindAsync(item.Id);
+            if (e != null) { Db.CuentasServicio.Remove(e); await Db.SaveChangesAsync(); await Cargar(); }
+        }
+    }
+}

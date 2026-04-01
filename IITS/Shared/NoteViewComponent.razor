@@ -1,0 +1,14 @@
+@*
+@if(Note != null)
+{
+    <li>
+        <span>@Note.Message</span>
+        <span>Creado: @Note.created.ToUniversalTime().ToString("ddd d MM yyyy")</span>
+
+    </li>
+}
+
+@code{
+    [Parameter]
+    public Validacion Note { get; set; }
+}*@

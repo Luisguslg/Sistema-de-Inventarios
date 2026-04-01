@@ -1,0 +1,581 @@
+@page "/aplicaciones"
+@using System.Globalization
+@inject IITS.Services.IAplicacionService AplicacionService
+@inject IITS.Services.IAprobacionService AprobacionService
+@inject IITS.Services.ICurrentUserService UserService
+@inject IITS.Data.AppDbContext Db
+@inject IITS.Services.ToastService Toast
+
+<PageTitle>Aplicaciones</PageTitle>
+
+<div class="container container-inventario">
+    <div class="box">
+        <h1 class="Page-title">Aplicaciones</h1>
+        <p class="has-text-grey">Inventario de aplicaciones.</p>
+
+        <div class="filtros-acciones-row mt-4">
+            <div class="field mb-0">
+                <label class="label">Estatus</label>
+                <div class="control">
+                    <select class="select-clean" @bind="filtroEstatus">
+                        <option value="">Todos</option>
+                        <option value="Activo">Activo</option>
+                        <option value="Inactivo">Inactivo</option>
+                        <option value="Desincorporado">Desincorporado</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field mb-0">
+                <label class="label">Crítico</label>
+                <div class="control">
+                    <select class="select-clean" @bind="filtroCritico">
+                        <option value="">Todos</option>
+                        <option value="Sí">Sí</option>
+                        <option value="No">No</option>
+                    </select>
+                </div>
+            </div>
+            <div class="buttons mb-0">
+                <button class="button is-primary" @onclick="AbrirNuevo">Nueva</button>
+                <IITS.Shared.ExportarDropdown Modulo="Aplicaciones" PathBase="@PathBase" />
+            </div>
+        </div>
+
+        @if (loading)
+        {
+            <p>Cargando...</p>
+        }
+        else
+        {
+            <div class="table-container mt-4">
+                <table class="table is-fullwidth is-striped table-inventario">
+                    <thead>
+                        <tr>
+                            <th class="col-nombre">Nombre</th>
+                            <th class="col-funcionalidad">Func.</th>
+                            <th class="col-corto">Propiet.</th>
+                            <th class="col-corto">Respons.</th>
+                            <th class="col-corto">Aloj.</th>
+                            <th class="col-medio">Proveed.</th>
+                            <th class="col-medio">Clasif.</th>
+                            <th class="col-acciones"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in itemsFiltrados)
+                        {
+                            <tr>
+                                <td class="col-nombre" title="@item.Nombre">@Na(item.Nombre)</td>
+                                <td class="col-funcionalidad" title="@(item.Funcionalidad ?? "")">@(string.IsNullOrEmpty(item.Funcionalidad) ? "N/A" : item.Funcionalidad)</td>
+                                <td class="col-corto" title="@Na(item.Propietario)">@Na(item.Propietario)</td>
+                                <td class="col-corto" title="@Na(item.Responsable)">@Na(item.Responsable)</td>
+                                <td class="col-corto" title="@Na(item.TipoAlojamiento)">@Na(item.TipoAlojamiento)</td>
+                                <td class="col-medio" title="@Na(item.Proveedor)">@Na(item.Proveedor)</td>
+                                <td class="col-medio" title="@Na(item.ClasificacionInformacion)">@Na(item.ClasificacionInformacion)</td>
+                                <td class="actions-cell col-acciones">
+                                    <div class="buttons" style="gap: 0.35rem;">
+                                        <button type="button" class="button is-small is-info is-light" @onclick="() => AbrirEditar(item.Id)">Editar</button>
+                                        <button type="button" class="button is-small is-danger is-light" @onclick="() => Eliminar(item.Id)">Eliminar</button>
+                                        @if (idsPorAprobar.Contains(item.Id)) { <span class="tag is-warning is-light">Por aprobar</span> }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (!itemsFiltrados.Any())
+            {
+                <p class="has-text-grey">No hay registros.</p>
+            }
+        }
+    </div>
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModal"></div>
+        <div class="modal-card" style="max-width: 640px;">
+            <header class="modal-card-head">
+                <p class="modal-card-title">@(editingId == null ? "Nueva aplicación" : "Editar aplicación")</p>
+                <button class="delete" aria-label="close" @onclick="CerrarModal"></button>
+            </header>
+            <section class="modal-card-body" style="max-height: 70vh; overflow-y: auto;">
+                <EditForm Model="formModel" OnValidSubmit="Guardar" id="form-aplicacion">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="notification is-danger is-light" />
+                    <div class="field">
+                        <label class="label">Nombre de la aplicación <span class="has-text-danger">*</span></label>
+                        <div class="control">
+                            <InputText class="input" @bind-Value="formModel.Nombre" placeholder="Nombre" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Funcionalidad principal</label>
+                        <div class="control">
+                            <InputTextArea class="textarea" rows="2" @bind-Value="formModel.Funcionalidad" placeholder="Descripción de la funcionalidad" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Propietario</label>
+                        <div class="control is-flex is-align-items-center gap-1">
+                            <select class="select-clean input" style="flex:1;" @bind="formModel.Propietario">
+                                <option value="">—</option>
+                                @foreach (var a in areasList) { <option value="@a.Name">@a.Name</option> }
+                            </select>
+                            <button type="button" class="button is-small is-light" @onclick="AbrirModalArea" title="Agregar área">+</button>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Responsable</label>
+                        <div class="control is-flex is-align-items-center gap-1">
+                            <select class="select-clean input" style="flex:1;" @bind="formModel.Responsable">
+                                <option value="">—</option>
+                                @foreach (var a in areasList) { <option value="@a.Name">@a.Name</option> }
+                            </select>
+                            <button type="button" class="button is-small is-light" @onclick="AbrirModalArea" title="Agregar área">+</button>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Tipo de alojamiento</label>
+                        <div class="field has-addons">
+                            <div class="control is-expanded">
+                                <InputSelect class="select-clean" @bind-Value="formModel.AlojamientoIdStr">
+                                    <option value="">— Seleccione —</option>
+                                    @foreach (var a in alojamientosList)
+                                    { <option value="@a.Id">@a.Nombre</option> }
+                                </InputSelect>
+                            </div>
+                            <div class="control">
+                                <button type="button" class="button is-light button-addon" @onclick="MostrarModalAlojamiento" title="Agregar tipo de alojamiento">+</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Proveedor</label>
+                        <div class="control">
+                            <InputText class="input" @bind-Value="formModel.Proveedor" placeholder="Nombre del proveedor (texto libre)" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Clasificación de la información</label>
+                        <div class="field has-addons">
+                            <div class="control is-expanded">
+                                <InputSelect class="select-clean" @bind-Value="formModel.ClasificacionInformacion">
+                                    <option value="">— Seleccione —</option>
+                                    <option value="Confidencial">Confidencial</option>
+                                    <option value="Interno">Interno</option>
+                                    <option value="Público">Público</option>
+                                    <option value="Restringido">Restringido</option>
+                                    <option value="KPMG interno">KPMG interno</option>
+                                    <option value="Otro">Otro</option>
+                                </InputSelect>
+                            </div>
+                            <div class="control">
+                                <span class="form-addon-spacer" aria-hidden="true"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="checkbox">
+                            <InputCheckbox class="checkbox" @bind-Value="formModel.Critico" />
+                            Crítico
+                        </label>
+                    </div>
+                    @if (formModel.Critico)
+                    {
+                        <div class="field">
+                            <label class="label">RPO/RTO</label>
+                            <div class="control">
+                                <InputSelect class="select-clean input" @bind-Value="formModel.RPORTO">
+                                    <option value="">—</option>
+                                    <option value="RTO ≤ 24 h, RPO ≤ 4 h (Critical)">RTO ≤ 24 h, RPO ≤ 4 h (Critical)</option>
+                                    <option value="RTO ≤ 7 días, RPO ≤ 24 h (High)">RTO ≤ 7 días, RPO ≤ 24 h (High)</option>
+                                    <option value="RTO ≤ 8 semanas, RPO ≤ 48 h (Medium)">RTO ≤ 8 semanas, RPO ≤ 48 h (Medium)</option>
+                                    <option value="RTO ≤ 1 año, RPO No requerido (Low)">RTO ≤ 1 año, RPO No requerido (Low)</option>
+                                </InputSelect>
+                            </div>
+                        </div>
+                    }
+                    <div class="field">
+                        <label class="label">Integraciones relevantes</label>
+                        <div class="control">
+                            <InputText class="input" @bind-Value="formModel.IntegracionesRelevantes" placeholder="Sí/No o descripción" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Dependencias técnicas</label>
+                        <div class="control">
+                            <InputText class="input" @bind-Value="formModel.DependenciasTecnicas" placeholder="Ej. Visual Studio Code Frame, SQL Server" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Modelo de licenciamiento</label>
+                        <div class="control">
+                            <InputSelect class="select-clean input" @bind-Value="formModel.ModeloLicenciamiento">
+                                <option value="">—</option>
+                                @foreach (var x in modeloLicenciamientoList) { <option value="@x.Name">@x.Name</option> }
+                            </InputSelect>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Costo anual estimado</label>
+                        <div class="control">
+                            <input class="input" type="text" @bind="formModel.CostoAnualEstimadoDisplay" placeholder="Ej. 1.234,56" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Fecha de adquisición / implementación</label>
+                        <div class="control">
+                            <InputDate class="input" @bind-Value="formModel.FechaAdquisicionImplementacion" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Versión actual</label>
+                        <div class="control">
+                            <InputText class="input" @bind-Value="formModel.VersionActual" placeholder="Ej. 2.1.0" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">SLA / Acuerdo de nivel de servicio</label>
+                        <div class="control">
+                            <InputText class="input" @bind-Value="formModel.SLA" placeholder="Según catálogo" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Autenticación</label>
+                        <div class="control is-flex is-align-items-center gap-1">
+                            <select class="select-clean input" style="flex:1;" @bind="formModel.Autenticacion">
+                                <option value="">—</option>
+                                @foreach (var x in autenticacionList) { <option value="@x.Name">@x.Name</option> }
+                            </select>
+                            <button type="button" class="button is-small is-light" @onclick="AbrirModalAutenticacion" title="Agregar opción">+</button>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label">Estatus <span class="has-text-danger">*</span></label>
+                        <div class="control">
+                            <InputSelect class="select-clean" @bind-Value="formModel.EstatusIdStr">
+                                <option value="">-- Seleccione --</option>
+                                @foreach (var e in estatusList)
+                                {
+                                    <option value="@e.Id">@e.Nombre</option>
+                                }
+                            </InputSelect>
+                        </div>
+                    </div>
+                </EditForm>
+            </section>
+            <footer class="modal-card-foot">
+                <button type="submit" form="form-aplicacion" class="button is-primary">Guardar</button>
+                <button type="button" class="button" @onclick="CerrarModal">Cancelar</button>
+            </footer>
+        </div>
+    </div>
+}
+
+@* Modal: Agregar tipo de alojamiento *@
+@if (modalAlojamiento)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModalAlojamiento"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">Agregar tipo de alojamiento</p>
+                <button class="delete" @onclick="CerrarModalAlojamiento"></button>
+            </header>
+            <section class="modal-card-body">
+                <div class="field">
+                    <label class="label">Nombre</label>
+                    <input class="input" @bind="nuevoAlojamientoNombre" placeholder="Ej. Nube, On-Premise" />
+                </div>
+            </section>
+            <footer class="modal-card-foot">
+                <button class="button is-primary" @onclick="GuardarNuevoAlojamiento">Agregar</button>
+                <button class="button" @onclick="CerrarModalAlojamiento">Cancelar</button>
+            </footer>
+        </div>
+    </div>
+}
+
+@* Modal: Agregar autenticación *@
+@if (modalAutenticacion)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModalAutenticacion"></div>
+        <div class="modal-card" style="max-width: 360px;">
+            <header class="modal-card-head"><p class="modal-card-title">Agregar autenticación</p><button class="delete" @onclick="CerrarModalAutenticacion"></button></header>
+            <section class="modal-card-body">
+                <div class="field"><label class="label">Nombre</label><div class="control"><input class="input" @bind="nuevoAutenticacionNombre" placeholder="Ej. SSO, LDAP" /></div></div>
+            </section>
+            <footer class="modal-card-foot"><button class="button is-primary" @onclick="GuardarNuevaAutenticacion">Agregar</button><button class="button" @onclick="CerrarModalAutenticacion">Cancelar</button></footer>
+        </div>
+    </div>
+}
+
+@* Modal: Agregar área (propietario/responsable) *@
+@if (modalArea)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModalArea"></div>
+        <div class="modal-card" style="max-width: 360px;">
+            <header class="modal-card-head"><p class="modal-card-title">Agregar área</p><button class="delete" @onclick="CerrarModalArea"></button></header>
+            <section class="modal-card-body">
+                <div class="field"><label class="label">Nombre del área</label><div class="control"><input class="input" @bind="nuevoAreaNombre" placeholder="Ej. Aplicaciones, Operaciones" /></div></div>
+            </section>
+            <footer class="modal-card-foot"><button class="button is-primary" @onclick="GuardarNuevaArea">Agregar</button><button class="button" @onclick="CerrarModalArea">Cancelar</button></footer>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private List<IITS.Entities.Aplicacion> items = new();
+    private List<IITS.Entities.Estatus> estatusList = new();
+    private List<IITS.Entities.Alojamiento> alojamientosList = new();
+    private List<IITS.Entities.Area> areasList = new();
+    private List<IITS.Entities.CatalogItem> modeloLicenciamientoList = new();
+    private List<IITS.Entities.CatalogItem> autenticacionList = new();
+    private Dictionary<Guid, IITS.Entities.Estatus> estatusDict = new();
+    private HashSet<Guid> idsPorAprobar = new();
+    private bool loading = true;
+    private bool mostrarModal = false;
+    private Guid? editingId = null;
+    private FormAplicacionModel formModel = new();
+
+    private bool modalAlojamiento = false;
+    private string nuevoAlojamientoNombre = "";
+    private bool modalArea = false;
+    private string nuevoAreaNombre = "";
+    private bool modalAutenticacion = false;
+    private string nuevoAutenticacionNombre = "";
+    private string filtroEstatus = "";
+    private string filtroCritico = "";
+
+    private static readonly CultureInfo EsES = CultureInfo.GetCultureInfo("es-ES");
+
+    private static string Na(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : s;
+
+    private IEnumerable<IITS.Entities.Aplicacion> itemsFiltrados
+    {
+        get
+        {
+            var list = items.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(filtroEstatus))
+            {
+                var est = estatusList.FirstOrDefault(e => e.Nombre?.Equals(filtroEstatus, StringComparison.OrdinalIgnoreCase) == true);
+                if (est != null) list = list.Where(i => i.EstatusId == est.Id);
+            }
+            if (!string.IsNullOrWhiteSpace(filtroCritico))
+            {
+                var crit = filtroCritico.Equals("Sí", StringComparison.OrdinalIgnoreCase);
+                list = list.Where(i => i.Critico == crit);
+            }
+            return list;
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        try
+        {
+            estatusList = await AplicacionService.GetEstatusListAsync();
+            estatusDict = await AplicacionService.GetEstatusDictionaryAsync();
+            if (await Db.TableExistsAsync("Alojamientos"))
+                alojamientosList = await Db.Alojamientos.AsNoTracking().OrderBy(a => a.Nombre).ToListAsync();
+            else
+                alojamientosList = new List<IITS.Entities.Alojamiento>();
+            if (await Db.TableExistsAsync("Areas"))
+                areasList = await Db.Areas.AsNoTracking().OrderBy(a => a.Name).ToListAsync();
+            else
+                areasList = new List<IITS.Entities.Area>();
+            if (await Db.TableExistsAsync("CatalogItems"))
+            {
+                var catalog = await Db.CatalogItems.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+                modeloLicenciamientoList = catalog.Where(c => c.Kind == "ModeloLicenciamiento").ToList();
+                autenticacionList = catalog.Where(c => c.Kind == "Autenticacion").ToList();
+            }
+            items = await AplicacionService.GetAllAsync();
+            idsPorAprobar = await AprobacionService.GetEntidadIdsPendientesAsync("Aplicaciones");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void AbrirNuevo()
+    {
+        editingId = null;
+        formModel = new FormAplicacionModel
+        {
+            EstatusIdStr = estatusList.FirstOrDefault(e => e.Codigo == 1000)?.Id.ToString() ?? "",
+            CostoAnualEstimadoDisplay = ""
+        };
+        mostrarModal = true;
+    }
+
+    private void AbrirEditar(Guid id)
+    {
+        var item = items.FirstOrDefault(x => x.Id == id);
+        if (item == null) return;
+        editingId = id;
+        formModel = new FormAplicacionModel
+        {
+            Nombre = item.Nombre ?? "",
+            Funcionalidad = item.Funcionalidad ?? "",
+            Propietario = item.Propietario ?? "",
+            Responsable = item.Responsable ?? "",
+            AlojamientoIdStr = item.AlojamientoId?.ToString() ?? "",
+            Proveedor = item.Proveedor ?? "",
+            ClasificacionInformacion = item.ClasificacionInformacion ?? "",
+            Critico = item.Critico,
+            IntegracionesRelevantes = item.IntegracionesRelevantes ?? "",
+            DependenciasTecnicas = item.DependenciasTecnicas ?? "",
+            ModeloLicenciamiento = item.ModeloLicenciamiento ?? "",
+            CostoAnualEstimado = item.CostoAnualEstimado,
+            FechaAdquisicionImplementacion = item.FechaAdquisicionImplementacion,
+            VersionActual = item.VersionActual ?? "",
+            SLA = item.SLA ?? "",
+            RPORTO = item.RPORTO ?? "",
+            Autenticacion = item.Autenticacion ?? "",
+            EstatusIdStr = item.EstatusId.ToString(),
+            CostoAnualEstimadoDisplay = item.CostoAnualEstimado.HasValue ? item.CostoAnualEstimado.Value.ToString("N2", EsES) : ""
+        };
+        mostrarModal = true;
+    }
+
+    private void CerrarModal() => mostrarModal = false;
+
+    private void MostrarModalAlojamiento() { nuevoAlojamientoNombre = ""; modalAlojamiento = true; }
+    private void CerrarModalAlojamiento() => modalAlojamiento = false;
+    private void AbrirModalArea() { nuevoAreaNombre = ""; modalArea = true; }
+    private void CerrarModalArea() => modalArea = false;
+    private void AbrirModalAutenticacion() { nuevoAutenticacionNombre = ""; modalAutenticacion = true; }
+    private void CerrarModalAutenticacion() => modalAutenticacion = false;
+    private async Task GuardarNuevaAutenticacion()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoAutenticacionNombre?.Trim())) return;
+        if (!await Db.TableExistsAsync("CatalogItems")) { Toast.ShowToast("Catálogo no disponible.", IITS.Services.ToastLevel.Warning); return; }
+        var name = nuevoAutenticacionNombre.Trim();
+        var existente = await Db.CatalogItems.AsNoTracking().Where(c => c.Kind == "Autenticacion" && c.Name != null && c.Name.Trim().ToLower() == name.ToLower()).OrderBy(c => c.Name).FirstOrDefaultAsync();
+        if (existente != null)
+        {
+            autenticacionList = (await Db.CatalogItems.AsNoTracking().Where(c => c.Kind == "Autenticacion").OrderBy(c => c.Name).ToListAsync());
+            formModel.Autenticacion = existente.Name ?? name;
+            CerrarModalAutenticacion();
+            Toast.ShowToast("Ese valor ya existe; se ha seleccionado.", IITS.Services.ToastLevel.Info);
+            return;
+        }
+        Db.CatalogItems.Add(new IITS.Entities.CatalogItem { Id = Guid.NewGuid(), Kind = "Autenticacion", Name = name });
+        await Db.SaveChangesAsync();
+        autenticacionList = await Db.CatalogItems.AsNoTracking().Where(c => c.Kind == "Autenticacion").OrderBy(c => c.Name).ToListAsync();
+        formModel.Autenticacion = name;
+        CerrarModalAutenticacion();
+        Toast.ShowToast("Autenticación agregada.", IITS.Services.ToastLevel.Success);
+    }
+    private async Task GuardarNuevaArea()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoAreaNombre)) return;
+        if (!await Db.TableExistsAsync("Areas")) { Toast.ShowToast("La tabla Areas no está disponible.", IITS.Services.ToastLevel.Warning); return; }
+        var name = nuevoAreaNombre.Trim();
+        if (areasList.Any(a => string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase))) { Toast.ShowToast("Esa área ya existe.", IITS.Services.ToastLevel.Warning); return; }
+        Db.Areas.Add(new IITS.Entities.Area { Id = Guid.NewGuid(), Name = name });
+        await Db.SaveChangesAsync();
+        areasList = await Db.Areas.AsNoTracking().OrderBy(a => a.Name).ToListAsync();
+        CerrarModalArea();
+        Toast.ShowToast("Área agregada.", IITS.Services.ToastLevel.Success);
+    }
+    private async Task GuardarNuevoAlojamiento()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoAlojamientoNombre)) return;
+        if (!await Db.TableExistsAsync("Alojamientos")) { Toast.ShowToast("La tabla Alojamientos no está disponible.", IITS.Services.ToastLevel.Warning); return; }
+        var nombreNorm = nuevoAlojamientoNombre.Trim();
+        var existente = await Db.Alojamientos.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Nombre.ToLower() == nombreNorm.ToLower());
+        if (existente != null)
+        {
+            alojamientosList = await Db.Alojamientos.AsNoTracking().OrderBy(x => x.Nombre).ToListAsync();
+            formModel.AlojamientoIdStr = existente.Id.ToString();
+            modalAlojamiento = false;
+            Toast.ShowToast($"Ya existe \"{existente.Nombre}\"; se ha seleccionado.", IITS.Services.ToastLevel.Info);
+            return;
+        }
+        var nuevo = new IITS.Entities.Alojamiento { Id = Guid.NewGuid(), Nombre = nombreNorm };
+        Db.Alojamientos.Add(nuevo);
+        await Db.SaveChangesAsync();
+        alojamientosList = await Db.Alojamientos.AsNoTracking().OrderBy(x => x.Nombre).ToListAsync();
+        formModel.AlojamientoIdStr = nuevo.Id.ToString();
+        modalAlojamiento = false;
+        Toast.ShowToast("Tipo de alojamiento agregado", IITS.Services.ToastLevel.Success);
+    }
+
+    private void AplicarFormAEntidad(IITS.Entities.Aplicacion ent)
+    {
+        ent.Nombre = formModel.Nombre.Trim();
+        ent.Funcionalidad = formModel.Funcionalidad?.Trim() ?? "";
+        ent.ClasificacionInformacion = formModel.ClasificacionInformacion?.Trim() ?? "";
+        ent.Critico = formModel.Critico;
+        if (!formModel.Critico)
+            ent.RPORTO = null;
+        ent.IntegracionesRelevantes = formModel.IntegracionesRelevantes?.Trim() ?? "";
+        ent.DependenciasTecnicas = formModel.DependenciasTecnicas?.Trim() ?? "";
+        ent.ModeloLicenciamiento = string.IsNullOrWhiteSpace(formModel.ModeloLicenciamiento) ? null : formModel.ModeloLicenciamiento.Trim();
+        ent.CostoAnualEstimado = null;
+        if (!string.IsNullOrWhiteSpace(formModel.CostoAnualEstimadoDisplay) && decimal.TryParse(formModel.CostoAnualEstimadoDisplay.Trim(), NumberStyles.Any, EsES, out var costoVal))
+            ent.CostoAnualEstimado = costoVal;
+        ent.FechaAdquisicionImplementacion = formModel.FechaAdquisicionImplementacion;
+        ent.VersionActual = string.IsNullOrWhiteSpace(formModel.VersionActual) ? null : formModel.VersionActual.Trim();
+        ent.SLA = string.IsNullOrWhiteSpace(formModel.SLA) ? null : formModel.SLA.Trim();
+        ent.RPORTO = string.IsNullOrWhiteSpace(formModel.RPORTO) ? null : formModel.RPORTO.Trim();
+        ent.Autenticacion = string.IsNullOrWhiteSpace(formModel.Autenticacion) ? null : formModel.Autenticacion.Trim();
+        if (Guid.TryParse(formModel.EstatusIdStr, out var estatusId))
+            ent.EstatusId = estatusId;
+        ent.AlojamientoId = Guid.TryParse(formModel.AlojamientoIdStr, out var aid) ? aid : null;
+        ent.TipoAlojamiento = alojamientosList.FirstOrDefault(a => a.Id == aid)?.Nombre ?? "";
+        ent.Propietario = formModel.Propietario?.Trim() ?? "";
+        ent.Responsable = formModel.Responsable?.Trim() ?? "";
+        ent.Proveedor = formModel.Proveedor?.Trim() ?? "";
+    }
+
+    private async Task Guardar()
+    {
+        if (!Guid.TryParse(formModel.EstatusIdStr, out var estatusId))
+        {
+            Toast.ShowToast("Seleccione un estatus válido", IITS.Services.ToastLevel.Warning);
+            return;
+        }
+        if (editingId == null)
+        {
+            var nueva = new IITS.Entities.Aplicacion
+            {
+                Id = Guid.NewGuid(),
+                EstatusId = estatusId,
+                CreatedAt = DateTime.UtcNow
+            };
+            AplicarFormAEntidad(nueva);
+            await AplicacionService.CreateAsync(nueva);
+        }
+        else
+        {
+            var ent = await AplicacionService.GetByIdAsync(editingId.Value);
+            if (ent != null)
+            {
+                AplicarFormAEntidad(ent);
+                await AplicacionService.UpdateAsync(ent);
+            }
+        }
+        CerrarModal();
+        await Cargar();
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        await AplicacionService.DeleteAsync(id);
+        await Cargar();
+    }
+}

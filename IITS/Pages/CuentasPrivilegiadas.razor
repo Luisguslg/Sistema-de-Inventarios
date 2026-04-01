@@ -1,0 +1,10 @@
+@page "/cuentas-privilegiadas"
+@inject NavigationManager Nav
+
+<PageTitle>Cuentas Privilegiadas</PageTitle>
+<p class="container mt-4">Redirigiendo a Cuentas...</p>
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    protected override void OnInitialized() => Nav.NavigateTo(PathBase.TrimEnd('/') + "/cuentas?tipo=Privilegiada", true);
+}
