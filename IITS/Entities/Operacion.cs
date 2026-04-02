@@ -56,9 +56,12 @@ public class Operacion
 
     /// <summary>BCP: Sí/No.</summary>
     public bool? BCP { get; set; }
-    /// <summary>RTO/RPO (igual que en Aplicaciones).</summary>
-    [MaxLength(200)]
-    public string? RPORTO { get; set; }
+    /// <summary>RTO: Recovery Time Objective — tiempo máximo tolerable de interrupción (ISO-067-GCS).</summary>
+    [MaxLength(100)]
+    public string? RTO { get; set; }
+    /// <summary>RPO: Recovery Point Objective — pérdida máxima de datos tolerable (ISO-067-GCS).</summary>
+    [MaxLength(100)]
+    public string? RPO { get; set; }
     /// <summary>Propietario: Auditoría, Impuesto y Legal, Asesoría, Infraestructura, Todas.</summary>
     [MaxLength(100)]
     public string? Propietario { get; set; }

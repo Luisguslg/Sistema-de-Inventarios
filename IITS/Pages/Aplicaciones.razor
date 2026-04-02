@@ -186,15 +186,15 @@
                     @if (formModel.Critico)
                     {
                         <div class="field">
-                            <label class="label">RPO/RTO</label>
+                            <label class="label">RTO (Recovery Time Objective)</label>
                             <div class="control">
-                                <InputSelect class="select-clean input" @bind-Value="formModel.RPORTO">
-                                    <option value="">—</option>
-                                    <option value="RTO ≤ 24 h, RPO ≤ 4 h (Critical)">RTO ≤ 24 h, RPO ≤ 4 h (Critical)</option>
-                                    <option value="RTO ≤ 7 días, RPO ≤ 24 h (High)">RTO ≤ 7 días, RPO ≤ 24 h (High)</option>
-                                    <option value="RTO ≤ 8 semanas, RPO ≤ 48 h (Medium)">RTO ≤ 8 semanas, RPO ≤ 48 h (Medium)</option>
-                                    <option value="RTO ≤ 1 año, RPO No requerido (Low)">RTO ≤ 1 año, RPO No requerido (Low)</option>
-                                </InputSelect>
+                                <InputText class="input" @bind-Value="formModel.RTO" placeholder="Ej: ≤ 24 h" />
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="label">RPO (Recovery Point Objective)</label>
+                            <div class="control">
+                                <InputText class="input" @bind-Value="formModel.RPO" placeholder="Ej: ≤ 4 h" />
                             </div>
                         </div>
                     }
@@ -441,7 +441,8 @@
             FechaAdquisicionImplementacion = item.FechaAdquisicionImplementacion,
             VersionActual = item.VersionActual ?? "",
             SLA = item.SLA ?? "",
-            RPORTO = item.RPORTO ?? "",
+            RTO = item.RTO ?? "",
+            RPO = item.RPO ?? "",
             Autenticacion = item.Autenticacion ?? "",
             EstatusIdStr = item.EstatusId.ToString(),
             CostoAnualEstimadoDisplay = item.CostoAnualEstimado.HasValue ? item.CostoAnualEstimado.Value.ToString("N2", EsES) : ""
@@ -521,7 +522,10 @@
         ent.ClasificacionInformacion = formModel.ClasificacionInformacion?.Trim() ?? "";
         ent.Critico = formModel.Critico;
         if (!formModel.Critico)
-            ent.RPORTO = null;
+        {
+            ent.RTO = null;
+            ent.RPO = null;
+        }
         ent.IntegracionesRelevantes = formModel.IntegracionesRelevantes?.Trim() ?? "";
         ent.DependenciasTecnicas = formModel.DependenciasTecnicas?.Trim() ?? "";
         ent.ModeloLicenciamiento = string.IsNullOrWhiteSpace(formModel.ModeloLicenciamiento) ? null : formModel.ModeloLicenciamiento.Trim();
@@ -531,7 +535,8 @@
         ent.FechaAdquisicionImplementacion = formModel.FechaAdquisicionImplementacion;
         ent.VersionActual = string.IsNullOrWhiteSpace(formModel.VersionActual) ? null : formModel.VersionActual.Trim();
         ent.SLA = string.IsNullOrWhiteSpace(formModel.SLA) ? null : formModel.SLA.Trim();
-        ent.RPORTO = string.IsNullOrWhiteSpace(formModel.RPORTO) ? null : formModel.RPORTO.Trim();
+        ent.RTO = string.IsNullOrWhiteSpace(formModel.RTO) ? null : formModel.RTO.Trim();
+        ent.RPO = string.IsNullOrWhiteSpace(formModel.RPO) ? null : formModel.RPO.Trim();
         ent.Autenticacion = string.IsNullOrWhiteSpace(formModel.Autenticacion) ? null : formModel.Autenticacion.Trim();
         if (Guid.TryParse(formModel.EstatusIdStr, out var estatusId))
             ent.EstatusId = estatusId;

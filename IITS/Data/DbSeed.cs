@@ -51,8 +51,15 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicacion
     ALTER TABLE [Aplicaciones] ADD [VersionActual] nvarchar(100) NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'SLA')
     ALTER TABLE [Aplicaciones] ADD [SLA] nvarchar(200) NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'RPORTO')
-    ALTER TABLE [Aplicaciones] ADD [RPORTO] nvarchar(200) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'RTO')
+    ALTER TABLE [Aplicaciones] ADD [RTO] nvarchar(100) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'RPO')
+    ALTER TABLE [Aplicaciones] ADD [RPO] nvarchar(100) NULL;
+-- Migrar datos existentes de RPORTO si aún existe la columna
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'RPORTO')
+BEGIN
+    UPDATE [Aplicaciones] SET [RTO] = LEFT([RPORTO], 100), [RPO] = LEFT([RPORTO], 100) WHERE [RPORTO] IS NOT NULL AND [RTO] IS NULL;
+END
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'Autenticacion')
     ALTER TABLE [Aplicaciones] ADD [Autenticacion] nvarchar(200) NULL;
 ", ct);
@@ -99,7 +106,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operacione
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operaciones') AND name = 'GarantiaExpira') ALTER TABLE [Operaciones] ADD [GarantiaExpira] datetime2 NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operaciones') AND name = 'Observaciones') ALTER TABLE [Operaciones] ADD [Observaciones] nvarchar(500) NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operaciones') AND name = 'BCP') ALTER TABLE [Operaciones] ADD [BCP] bit NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operaciones') AND name = 'RPORTO') ALTER TABLE [Operaciones] ADD [RPORTO] nvarchar(200) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operaciones') AND name = 'RTO') ALTER TABLE [Operaciones] ADD [RTO] nvarchar(100) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operaciones') AND name = 'RPO') ALTER TABLE [Operaciones] ADD [RPO] nvarchar(100) NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operaciones') AND name = 'Propietario') ALTER TABLE [Operaciones] ADD [Propietario] nvarchar(100) NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operaciones') AND name = 'ClasificacionInformacion') ALTER TABLE [Operaciones] ADD [ClasificacionInformacion] nvarchar(200) NULL;
 ", ct);

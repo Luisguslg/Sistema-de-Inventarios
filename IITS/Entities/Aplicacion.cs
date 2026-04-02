@@ -54,8 +54,12 @@ public class Aplicacion
     [MaxLength(200)]
     public string? SLA { get; set; }
 
-    [MaxLength(200)]
-    public string? RPORTO { get; set; }
+    /// <summary>RTO: Recovery Time Objective (ISO-067-GCS).</summary>
+    [MaxLength(100)]
+    public string? RTO { get; set; }
+    /// <summary>RPO: Recovery Point Objective (ISO-067-GCS).</summary>
+    [MaxLength(100)]
+    public string? RPO { get; set; }
 
     [MaxLength(200)]
     public string? Autenticacion { get; set; }

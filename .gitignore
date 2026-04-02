@@ -367,3 +367,12 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Archivos de configuración con credenciales de producción (ISO-057-ESC / KPMG)
+# Nunca subir credenciales al repositorio. Usar variables de entorno o secretos de servidor.
+appsettings.Production.json
+appsettings.Staging.json
+secrets.json
+.env
+*.pfx
+*.p12

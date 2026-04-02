@@ -52,8 +52,10 @@ public class FormAplicacionModel
     [MaxLength(200)]
     public string SLA { get; set; } = "";
 
-    [MaxLength(200)]
-    public string RPORTO { get; set; } = "";
+    [MaxLength(100)]
+    public string RTO { get; set; } = "";
+    [MaxLength(100)]
+    public string RPO { get; set; } = "";
 
     [MaxLength(200)]
     public string Autenticacion { get; set; } = "";

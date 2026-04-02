@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Threading.RateLimiting;
 using IITS.Data;
 using IITS.Middleware;
 using IITS.Services;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
 
@@ -73,6 +75,19 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("IITS"),
         o => o.UseQuerySplittingBehavior(Microsoft.EntityFrameworkCore.QuerySplittingBehavior.SplitQuery)));
+
+// Rate limiting para endpoints de exportación y auditoría (ISO-082-API)
+builder.Services.AddRateLimiter(opts =>
+{
+    opts.AddFixedWindowLimiter("export", o =>
+    {
+        o.Window = TimeSpan.FromMinutes(1);
+        o.PermitLimit = 10;
+        o.QueueLimit = 0;
+        o.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+    });
+    opts.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
 
 var app = builder.Build();
 
@@ -310,6 +325,7 @@ app.UseAuthentication();
 app.UseMiddleware<DevAuthMiddleware>();
 app.UseMiddleware<SessionCookieSignInMiddleware>();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // Rutas de API primero (antes de Blazor) para que no las capture el fallback y devuelva HTML
 // PDF de auditoría (pendientes + datos del módulo + aprobadores)
@@ -330,7 +346,7 @@ app.MapGet("/api/auditoria/pdf", async (HttpContext ctx) =>
     ctx.Response.ContentType = "application/pdf";
     ctx.Response.Headers.Append("Content-Disposition", $"attachment; filename=\"{fileName}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}");
     await ctx.Response.Body.WriteAsync(bytes);
-});
+}).RequireRateLimiting("export");
 
 // Exportación: /api/export/{modulo}/xlsx|pdf|csv (Aplicaciones, Logs, etc.)
 app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string formato, HttpContext ctx) =>
@@ -383,11 +399,12 @@ app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string format
                 ["FechaAdquisicionImplementacion"] = a.FechaAdquisicionImplementacion?.ToString("yyyy-MM-dd") ?? "N/A",
                 ["VersionActual"] = Na(a.VersionActual),
                 ["SLA"] = Na(a.SLA),
-                ["RPORTO"] = Na(a.RPORTO),
+                ["RTO"] = Na(a.RTO),
+                ["RPO"] = Na(a.RPO),
                 ["Autenticacion"] = Na(a.Autenticacion),
                 ["Estatus"] = Na(a.Estatus?.Nombre)
             }).Cast<IReadOnlyDictionary<string, object?>>().ToList()
-            : new List<IReadOnlyDictionary<string, object?>> { new Dictionary<string, object?> { ["Nombre"] = null, ["Funcionalidad"] = null, ["Propietario"] = null, ["Responsable"] = null, ["TipoAlojamiento"] = null, ["Proveedor"] = null, ["ClasificacionInformacion"] = null, ["Critico"] = null, ["IntegracionesRelevantes"] = null, ["DependenciasTecnicas"] = null, ["ModeloLicenciamiento"] = null, ["CostoAnualEstimado"] = null, ["FechaAdquisicionImplementacion"] = null, ["VersionActual"] = null, ["SLA"] = null, ["RPORTO"] = null, ["Autenticacion"] = null, ["Estatus"] = null } };
+            : new List<IReadOnlyDictionary<string, object?>> { new Dictionary<string, object?> { ["Nombre"] = null, ["Funcionalidad"] = null, ["Propietario"] = null, ["Responsable"] = null, ["TipoAlojamiento"] = null, ["Proveedor"] = null, ["ClasificacionInformacion"] = null, ["Critico"] = null, ["IntegracionesRelevantes"] = null, ["DependenciasTecnicas"] = null, ["ModeloLicenciamiento"] = null, ["CostoAnualEstimado"] = null, ["FechaAdquisicionImplementacion"] = null, ["VersionActual"] = null, ["SLA"] = null, ["RTO"] = null, ["RPO"] = null, ["Autenticacion"] = null, ["Estatus"] = null } };
         await EscribirExportacion(ctx, exportSvc, "Aplicaciones", datos, formato, fecha);
     }
     else if (modulo.Equals("Logs", StringComparison.OrdinalIgnoreCase))
@@ -423,7 +440,7 @@ app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string format
                     query = query.Where(o => o.EstatusId == estatusInactivo.Id);
             }
             var list = await query.OrderBy(o => o.Hostname).ToListAsync();
-            var emptyRow = new Dictionary<string, object?> { ["Oficina"] = null, ["Área responsable"] = null, ["Dispositivo"] = null, ["Hostname"] = null, ["Entorno de operación"] = null, ["Propietario"] = null, ["Criticidad"] = null, ["Ambiente"] = null, ["Fabricante"] = null, ["Modelo"] = null, ["Función/Uso"] = null, ["Tipo de infraestructura"] = null, ["Serial"] = null, ["Sistema Operativo"] = null, ["Firmware"] = null, ["Garantía"] = null, ["BCP"] = null, ["RPO/RTO"] = null, ["Descripción"] = null, ["Clasificación de la información"] = null };
+            var emptyRow = new Dictionary<string, object?> { ["Oficina"] = null, ["Área responsable"] = null, ["Dispositivo"] = null, ["Hostname"] = null, ["Entorno de operación"] = null, ["Propietario"] = null, ["Criticidad"] = null, ["Ambiente"] = null, ["Fabricante"] = null, ["Modelo"] = null, ["Función/Uso"] = null, ["Tipo de infraestructura"] = null, ["Serial"] = null, ["Sistema Operativo"] = null, ["Firmware"] = null, ["Garantía"] = null, ["BCP"] = null, ["RTO"] = null, ["RPO"] = null, ["Descripción"] = null, ["Clasificación de la información"] = null };
             datos = list.Count > 0
                 ? list.Select(o => new Dictionary<string, object?>
                 {
@@ -444,7 +461,8 @@ app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string format
                     ["Firmware"] = Na(o.Firmware),
                     ["Garantía"] = o.GarantiaExpira.HasValue ? o.GarantiaExpira.Value.ToString("yyyy-MM-dd") : "N/A",
                     ["BCP"] = o.BCP == true ? "Sí" : (o.BCP == false ? "No" : "N/A"),
-                    ["RPO/RTO"] = Na(o.RPORTO),
+                    ["RTO"] = Na(o.RTO),
+                    ["RPO"] = Na(o.RPO),
                     ["Descripción"] = Na(o.Observaciones),
                     ["Clasificación de la información"] = Na(o.ClasificacionInformacion)
                 }).Cast<IReadOnlyDictionary<string, object?>>().ToList()
@@ -569,7 +587,7 @@ app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string format
     {
         ctx.Response.StatusCode = 404;
     }
-});
+}).RequireRateLimiting("export");
 
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");

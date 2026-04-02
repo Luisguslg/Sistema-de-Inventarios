@@ -9,14 +9,12 @@ public class AprobacionService : IAprobacionService
     private readonly AppDbContext _db;
     private readonly IAuditLogService? _audit;
     private readonly IAprobacionPermisoService? _permisos;
-    private readonly ICurrentUserService? _currentUser;
 
-    public AprobacionService(AppDbContext db, IAuditLogService? audit = null, IAprobacionPermisoService? permisos = null, ICurrentUserService? currentUser = null)
+    public AprobacionService(AppDbContext db, IAuditLogService? audit = null, IAprobacionPermisoService? permisos = null)
     {
         _db = db;
         _audit = audit;
         _permisos = permisos;
-        _currentUser = currentUser;
     }
 
     public async Task<List<Aprobacion>> GetAllAsync(string? modulo = null, int max = 200)
@@ -130,35 +128,23 @@ public class AprobacionService : IAprobacionService
                 await _db.SaveChangesAsync();
             }
 
-            var esAdmin = _currentUser?.IsAdmin == true;
-            if (esAdmin)
+            var aprobadores = _permisos != null ? await _permisos.GetApproversForModuloAsync(a.Modulo) : new List<User>();
+            var votos = await _db.AprobacionVotos.AsNoTracking().Where(v => v.AprobacionId == aprobacionId).ToListAsync();
+            var rechazo = votos.Any(v => string.Equals(v.Estado, "Rechazado", StringComparison.OrdinalIgnoreCase));
+            if (rechazo)
+            {
+                a.Estado = "Rechazado";
+                a.UsuarioId = usuarioId;
+                a.Fecha = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
+            else if (aprobadores.Count == 0 || (votos.Count >= aprobadores.Count && votos.All(v => string.Equals(v.Estado, "Aprobado", StringComparison.OrdinalIgnoreCase))))
             {
                 a.Estado = "Aprobado";
                 a.UsuarioId = usuarioId;
                 a.Fecha = DateTime.UtcNow;
                 if (comentario != null) a.Comentario = comentario;
                 await _db.SaveChangesAsync();
-            }
-            else
-            {
-                var aprobadores = _permisos != null ? await _permisos.GetApproversForModuloAsync(a.Modulo) : new List<User>();
-                var votos = await _db.AprobacionVotos.AsNoTracking().Where(v => v.AprobacionId == aprobacionId).ToListAsync();
-                var rechazo = votos.Any(v => string.Equals(v.Estado, "Rechazado", StringComparison.OrdinalIgnoreCase));
-                if (rechazo)
-                {
-                    a.Estado = "Rechazado";
-                    a.UsuarioId = usuarioId;
-                    a.Fecha = DateTime.UtcNow;
-                    await _db.SaveChangesAsync();
-                }
-                else if (aprobadores.Count == 0 || (votos.Count >= aprobadores.Count && votos.All(v => string.Equals(v.Estado, "Aprobado", StringComparison.OrdinalIgnoreCase))))
-                {
-                    a.Estado = "Aprobado";
-                    a.UsuarioId = usuarioId;
-                    a.Fecha = DateTime.UtcNow;
-                    if (comentario != null) a.Comentario = comentario;
-                    await _db.SaveChangesAsync();
-                }
             }
         }
         else

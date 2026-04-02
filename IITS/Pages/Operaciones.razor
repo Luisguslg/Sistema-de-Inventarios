@@ -185,7 +185,8 @@
                 <div class="columns is-multiline">
                     <div class="column is-half"><div class="field"><label class="label">Garantía expira</label><div class="control"><input class="input" type="date" @bind="formGarantiaExpira" /></div></div></div>
                     <div class="column is-half"><div class="field"><label class="label">BCP</label><div class="control"><select class="select-clean" @bind="formBcp"><option value="">—</option><option value="Sí">Sí</option><option value="No">No</option></select></div></div></div>
-                    <div class="column is-half"><div class="field"><label class="label">RPO/RTO</label><div class="control"><select class="select-clean" @bind="formRPORTO"><option value="">—</option><option value="RTO ≤ 24 h, RPO ≤ 4 h (Critical)">RTO ≤ 24 h, RPO ≤ 4 h (Critical)</option><option value="RTO ≤ 7 días, RPO ≤ 24 h (High)">RTO ≤ 7 días, RPO ≤ 24 h (High)</option><option value="RTO ≤ 8 semanas, RPO ≤ 48 h (Medium)">RTO ≤ 8 semanas, RPO ≤ 48 h (Medium)</option><option value="RTO ≤ 1 año, RPO No requerido (Low)">RTO ≤ 1 año, RPO No requerido (Low)</option></select></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">RTO (Recovery Time Objective)</label><div class="control"><input class="input" type="text" @bind="formRTO" placeholder="Ej: ≤ 24 h" /></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">RPO (Recovery Point Objective)</label><div class="control"><input class="input" type="text" @bind="formRPO" placeholder="Ej: ≤ 4 h" /></div></div></div>
                     <div class="column is-half"><div class="field"><label class="label">Clasificación de la información</label><div class="control"><select class="select-clean" @bind="formClasificacionInformacion"><option value="">—</option><option value="N/A">N/A</option><option value="Confidencial">Confidencial</option><option value="Interno">Interno</option><option value="Público">Público</option><option value="Restringido">Restringido</option><option value="KPMG interno">KPMG interno</option><option value="Otro">Otro</option></select></div></div></div>
                     <div class="column is-full"><div class="field"><label class="label">Descripción</label><div class="control"><textarea class="textarea" @bind="formObservaciones" rows="2"></textarea></div></div></div>
                 </div>
@@ -285,7 +286,8 @@
     private string formOwnerAreaIdStr = "";
     private string formPropietario = "";
     private string formBcp = "";
-    private string formRPORTO = "";
+    private string formRTO = "";
+    private string formRPO = "";
     private string formClasificacionInformacion = "";
     private string formEnvironmentIdStr = "";
     private string formCriticalityIdStr = "";
@@ -537,7 +539,7 @@
         formTipoDispositivo = ""; formFuncion = ""; formTipoInfraestructura = ""; formSistemaOperativo = "";
         formCantidadCPU = null;
         formEstatusIdStr = estatusList.FirstOrDefault(e => e.Codigo == 1000)?.Id.ToString() ?? "";
-        formOfficeIdStr = ""; formAreaIdStr = ""; formAlojamientoIdStr = ""; formOwnerAreaIdStr = ""; formPropietario = ""; formBcp = ""; formRPORTO = ""; formClasificacionInformacion = "";
+        formOfficeIdStr = ""; formAreaIdStr = ""; formAlojamientoIdStr = ""; formOwnerAreaIdStr = ""; formPropietario = ""; formBcp = ""; formRTO = ""; formRPO = ""; formClasificacionInformacion = "";
         formEnvironmentIdStr = ""; formCriticalityIdStr = ""; formCategoryIdStr = ""; formManufacturerIdStr = ""; formDeviceModelIdStr = "";
         mostrarModal = true;
     }
@@ -575,7 +577,8 @@
         formOwnerAreaIdStr = o.OwnerAreaId?.ToString() ?? "";
         formPropietario = o.Propietario ?? "";
         formBcp = o.BCP == true ? "Sí" : (o.BCP == false ? "No" : "");
-        formRPORTO = o.RPORTO ?? "";
+        formRTO = o.RTO ?? "";
+        formRPO = o.RPO ?? "";
         formClasificacionInformacion = o.ClasificacionInformacion ?? "";
         formEnvironmentIdStr = o.EnvironmentId?.ToString() ?? "";
         formCriticalityIdStr = o.CriticalityId?.ToString() ?? "";
@@ -612,7 +615,8 @@
         Guid? ownerAreaId = Guid.TryParse(formOwnerAreaIdStr, out var oaid) ? oaid : null;
         var propietario = string.IsNullOrWhiteSpace(formPropietario) ? null : formPropietario.Trim();
         bool? bcp = string.IsNullOrWhiteSpace(formBcp) ? null : (formBcp.Trim().Equals("Sí", StringComparison.OrdinalIgnoreCase));
-        var rporto = string.IsNullOrWhiteSpace(formRPORTO) ? null : formRPORTO.Trim();
+        var rto = string.IsNullOrWhiteSpace(formRTO) ? null : formRTO.Trim();
+        var rpo = string.IsNullOrWhiteSpace(formRPO) ? null : formRPO.Trim();
         var clasifInfo = string.IsNullOrWhiteSpace(formClasificacionInformacion) ? null : formClasificacionInformacion.Trim();
         Guid? envId = Guid.TryParse(formEnvironmentIdStr, out var env) ? env : null;
         Guid? critId = Guid.TryParse(formCriticalityIdStr, out var cid) ? cid : null;
@@ -648,7 +652,8 @@
             ent.OwnerAreaId = null;
             ent.Propietario = propietario;
             ent.BCP = bcp;
-            ent.RPORTO = rporto;
+            ent.RTO = rto;
+            ent.RPO = rpo;
             ent.ClasificacionInformacion = clasifInfo;
             ent.EnvironmentId = envId;
             ent.CriticalityId = critId;
@@ -695,7 +700,8 @@
                     OwnerAreaId = null,
                     Propietario = propietario,
                     BCP = bcp,
-                    RPORTO = rporto,
+                    RTO = rto,
+                    RPO = rpo,
                     ClasificacionInformacion = clasifInfo,
                     EnvironmentId = envId,
                     CriticalityId = critId,
