@@ -77,8 +77,15 @@
                                 <td class="col-corto" title="@Na(item.SistemaOperativo)">@Na(item.SistemaOperativo)</td>
                                 <td class="actions-cell col-acciones">
                                         <div class="buttons" style="gap: 0.35rem;">
-                                            <button type="button" class="button is-small is-info is-light" @onclick="() => AbrirEditar(item.Id)">Editar</button>
-                                            <button type="button" class="button is-small is-light" @onclick="() => Eliminar(item.Id)">Eliminar</button>
+                                            @if (idsPorAprobar.Contains(item.Id))
+                                            {
+                                                <span class="tag is-warning" title="Hay una modificación pendiente de aprobación.">Aprobación pendiente</span>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="button is-small is-info is-light" @onclick="() => AbrirEditar(item.Id)">Editar</button>
+                                                <button type="button" class="button is-small is-light" @onclick="() => Eliminar(item.Id)">Eliminar</button>
+                                            }
                                         </div>
                                     </td>
                             </tr>
@@ -271,6 +278,7 @@
     private List<IITS.Entities.CatalogItem> funcionList = new();
     private List<IITS.Entities.CatalogItem> tipoInfraestructuraList = new();
     private List<IITS.Entities.CatalogItem> sistemaOperativoList = new();
+    private HashSet<Guid> idsPorAprobar = new();
     private bool loading = true;
     private bool mostrarModal = false;
     private Guid? editingId = null;
@@ -371,7 +379,11 @@
             deviceModelsList = await Db.DeviceModels.AsNoTracking().Include(d => d.Manufacturer).OrderBy(d => d.Name).ToListAsync();
             hostsFisicosList = (await Db.Operaciones.AsNoTracking().Where(o => o.TipoInfraestructura != null && o.TipoInfraestructura.Contains("Físico")).Select(o => o.Hostname).ToListAsync()).Where(h => !string.IsNullOrWhiteSpace(h)).OrderBy(h => h).Distinct().ToList();
             await CargarCatalogItems();
+            // Excluir ítems con alta pendiente de aprobación y obtener pendientes para badge
+            var pendientesCrear = await AprobacionService.GetCrearPendientesAsync("Operaciones");
+            idsPorAprobar = await AprobacionService.GetEntidadIdsPendientesAsync("Operaciones");
             var full = await Db.Operaciones.AsNoTracking()
+                .Where(o => !pendientesCrear.Contains(o.Id))
                 .Include(o => o.Estatus)
                 .Include(o => o.Office)
                 .Include(o => o.Area)
@@ -410,7 +422,10 @@
             categoriesList = new List<IITS.Entities.Category>();
             vendorsList = new List<IITS.Entities.Vendor>();
             deviceModelsList = new List<IITS.Entities.DeviceModel>();
+            var pendientesCrearSimple = await AprobacionService.GetCrearPendientesAsync("Operaciones");
+            idsPorAprobar = await AprobacionService.GetEntidadIdsPendientesAsync("Operaciones");
             items = await Db.Operaciones.AsNoTracking()
+                .Where(o => !pendientesCrearSimple.Contains(o.Id))
                 .OrderBy(o => o.Hostname)
                 .Select(o => new OperacionRow
                 {
@@ -643,41 +658,35 @@
             if ((ent.Host ?? "") != (formHost?.Trim() ?? "")) cambios.Add($"Host: {ent.Host ?? "-"} → {formHost?.Trim() ?? "-"}");
             if (ent.CantidadCPU != formCantidadCPU) cambios.Add($"Cant. CPU/VP: {ent.CantidadCPU} → {formCantidadCPU}");
             var detalleAudit = cambios.Count > 0 ? string.Join("; ", cambios) : hostname;
-            ent.Hostname = hostname;
-            ent.Serial = serial ?? "";
-            ent.EstatusId = eid;
-            ent.OfficeId = officeId;
-            ent.AreaId = areaId;
-            ent.AlojamientoId = alojamientoId;
-            ent.OwnerAreaId = null;
-            ent.Propietario = propietario;
-            ent.BCP = bcp;
-            ent.RTO = rto;
-            ent.RPO = rpo;
-            ent.ClasificacionInformacion = clasifInfo;
-            ent.EnvironmentId = envId;
-            ent.CriticalityId = critId;
-            ent.CategoryId = catId;
-            ent.ManufacturerId = manufId;
-            ent.DeviceModelId = devModelId;
-            ent.TipoDispositivo = string.IsNullOrWhiteSpace(formTipoDispositivo) ? null : formTipoDispositivo.Trim();
-            ent.Funcion = string.IsNullOrWhiteSpace(formFuncion) ? null : formFuncion.Trim();
-            ent.TipoInfraestructura = string.IsNullOrWhiteSpace(formTipoInfraestructura) ? null : formTipoInfraestructura.Trim();
-            ent.Host = string.IsNullOrWhiteSpace(formHost) ? null : formHost.Trim();
-            ent.RAM = string.IsNullOrWhiteSpace(formRAM) ? null : formRAM.Trim();
-            ent.CantidadCPU = formCantidadCPU;
-            ent.VelocidadCPU = string.IsNullOrWhiteSpace(formVelocidadCPU) ? null : formVelocidadCPU.Trim();
-            ent.CapacidadDAS = string.IsNullOrWhiteSpace(formCapacidadDAS) ? null : formCapacidadDAS.Trim();
-            ent.CapacidadSAN = string.IsNullOrWhiteSpace(formCapacidadSAN) ? null : formCapacidadSAN.Trim();
-            ent.SistemaOperativo = string.IsNullOrWhiteSpace(formSistemaOperativo) ? null : formSistemaOperativo.Trim();
-            ent.Firmware = string.IsNullOrWhiteSpace(formFirmware) ? null : formFirmware.Trim();
-            ent.GarantiaExpira = garantiaExpira;
-            ent.IP = string.IsNullOrWhiteSpace(formIP) ? null : formIP.Trim();
-            ent.MAC = string.IsNullOrWhiteSpace(formMAC) ? null : formMAC.Trim();
-            ent.Observaciones = string.IsNullOrWhiteSpace(formObservaciones) ? null : formObservaciones.Trim();
-            await Db.SaveChangesAsync();
-            await AuditLogService.RegistrarAsync("Operaciones", ent.Id, "Actualizar", detalleAudit, UserService.UserId);
-            await AprobacionService.RegistrarAsync("Operaciones", ent.Id, "Por aprobar", "Modificación de tecnología", UserService.UserId);
+            // Descartar los cambios del change tracker para no contaminar futuras operaciones
+            Db.Entry(ent).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+            // No aplicar los cambios hasta aprobación — serializar datos propuestos
+            await AuditLogService.RegistrarAsync("Operaciones", ent.Id, "Solicitar edición", detalleAudit, UserService.UserId);
+            var propuestoOp = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                Hostname = hostname, Serial = serial, EstatusId = eid.ToString(),
+                OfficeId = officeId?.ToString(), AreaId = areaId?.ToString(), AlojamientoId = alojamientoId?.ToString(),
+                Propietario = propietario, BCP = bcp, RTO = rto, RPO = rpo, ClasificacionInformacion = clasifInfo,
+                EnvironmentId = envId?.ToString(), CriticalityId = critId?.ToString(), CategoryId = catId?.ToString(),
+                ManufacturerId = manufId?.ToString(), DeviceModelId = devModelId?.ToString(),
+                TipoDispositivo = string.IsNullOrWhiteSpace(formTipoDispositivo) ? null : formTipoDispositivo.Trim(),
+                Funcion = string.IsNullOrWhiteSpace(formFuncion) ? null : formFuncion.Trim(),
+                TipoInfraestructura = string.IsNullOrWhiteSpace(formTipoInfraestructura) ? null : formTipoInfraestructura.Trim(),
+                Host = string.IsNullOrWhiteSpace(formHost) ? null : formHost.Trim(),
+                RAM = string.IsNullOrWhiteSpace(formRAM) ? null : formRAM.Trim(),
+                CantidadCPU = formCantidadCPU,
+                VelocidadCPU = string.IsNullOrWhiteSpace(formVelocidadCPU) ? null : formVelocidadCPU.Trim(),
+                CapacidadDAS = string.IsNullOrWhiteSpace(formCapacidadDAS) ? null : formCapacidadDAS.Trim(),
+                CapacidadSAN = string.IsNullOrWhiteSpace(formCapacidadSAN) ? null : formCapacidadSAN.Trim(),
+                SistemaOperativo = string.IsNullOrWhiteSpace(formSistemaOperativo) ? null : formSistemaOperativo.Trim(),
+                Firmware = string.IsNullOrWhiteSpace(formFirmware) ? null : formFirmware.Trim(),
+                GarantiaExpira = garantiaExpira?.ToString("O"),
+                IP = string.IsNullOrWhiteSpace(formIP) ? null : formIP.Trim(),
+                MAC = string.IsNullOrWhiteSpace(formMAC) ? null : formMAC.Trim(),
+                Observaciones = string.IsNullOrWhiteSpace(formObservaciones) ? null : formObservaciones.Trim()
+            });
+            await AprobacionService.RegistrarAsync("Operaciones", ent.Id, "Por aprobar", "Modificación de tecnología", UserService.UserId,
+                tipoAccion: "Editar", datosPropuestos: propuestoOp);
             var cambiosHtml = cambios.Count > 0 ? string.Join("<br/>", cambios.Select(c => System.Net.WebUtility.HtmlEncode(c))) : null;
             try { await NotificarAprobadoresTecnologiaAsync(ent.Id, hostname, esModificacion: true, cambiosHtml: cambiosHtml); } catch { }
         }
@@ -733,7 +742,7 @@
                     id, hostname, serial, eid, now);
             }
             await AuditLogService.RegistrarAsync("Operaciones", id, "Crear", hostname, UserService.UserId);
-            await AprobacionService.RegistrarAsync("Operaciones", id, "Por aprobar", "Alta de tecnología", UserService.UserId);
+            await AprobacionService.RegistrarAsync("Operaciones", id, "Por aprobar", "Alta de tecnología", UserService.UserId, tipoAccion: "Crear");
             try { await NotificarAprobadoresTecnologiaAsync(id, hostname); } catch { }
         }
         CerrarModal();

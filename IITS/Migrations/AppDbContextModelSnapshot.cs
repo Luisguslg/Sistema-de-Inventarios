@@ -226,6 +226,9 @@ namespace IITS.Migrations
                     b.Property<string>("Comentario")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("DatosPropuestos")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("EntidadId")
                         .HasColumnType("uniqueidentifier");
 
@@ -241,6 +244,10 @@ namespace IITS.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("TipoAccion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<Guid?>("UsuarioId")
                         .HasColumnType("uniqueidentifier");

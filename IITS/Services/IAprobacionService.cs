@@ -17,7 +17,10 @@ public interface IAprobacionService
     Task<List<Aprobacion>> GetAllAsync(string? modulo = null, int max = 200);
     Task<List<PendienteConVoto>> GetPendientesConVotoAsync(string modulo, Guid? userId);
     Task<HashSet<Guid>> GetEntidadIdsPendientesAsync(string modulo);
-    Task RegistrarAsync(string modulo, Guid entidadId, string estado, string? comentario = null, Guid? usuarioId = null);
+    /// <summary>IDs de entidades con una alta ("Crear") pendiente de aprobación — se excluyen del inventario principal.</summary>
+    Task<HashSet<Guid>> GetCrearPendientesAsync(string modulo);
+    Task RegistrarAsync(string modulo, Guid entidadId, string estado, string? comentario = null, Guid? usuarioId = null,
+        string? tipoAccion = null, string? datosPropuestos = null);
     Task<bool> MarcarAprobadoAsync(Guid aprobacionId, Guid? usuarioId, string? comentario = null);
     Task<bool> MarcarRechazadoAsync(Guid aprobacionId, Guid? usuarioId, string? comentario = null);
 }

@@ -70,9 +70,15 @@
                                 <td>@Na(item.AplicacionNombre ?? item.ServicioRelacionado)</td>
                                 <td>@Na(estatusDict.GetValueOrDefault(item.EstatusId)?.Nombre)</td>
                                 <td>
-                                    @if (idsPorAprobar.Contains(item.Id)) { <span class="tag is-warning is-light mr-2">Por aprobar</span> }
-                                    <button class="button is-small is-info is-light" @onclick="() => AbrirEditar(item)">Editar</button>
-                                    <button class="button is-small is-danger is-light" @onclick="() => Eliminar(item)">Eliminar</button>
+                                    @if (idsPorAprobar.Contains(item.Id))
+                                    {
+                                        <span class="tag is-warning" title="Hay una modificación pendiente de aprobación.">Aprobación pendiente</span>
+                                    }
+                                    else
+                                    {
+                                        <button class="button is-small is-info is-light" @onclick="() => AbrirEditar(item)">Editar</button>
+                                        <button class="button is-small is-danger is-light" @onclick="() => Eliminar(item)">Eliminar</button>
+                                    }
                                 </td>
                             </tr>
                         }
@@ -407,8 +413,15 @@
                 Descripcion = s.Descripcion
             })).OrderBy(x => x.Tipo).ThenBy(x => x.Nombre).ToList();
         }
+        try
+        {
+            idsPorAprobar = await AprobacionService.GetEntidadIdsPendientesAsync("Cuentas");
+            var pendientesCrear = await AprobacionService.GetCrearPendientesAsync("Cuentas");
+            if (pendientesCrear.Count > 0)
+                listado = listado.Where(x => !pendientesCrear.Contains(x.Id)).ToList();
+        }
+        catch { idsPorAprobar = new HashSet<Guid>(); }
         items = listado;
-        try { idsPorAprobar = await AprobacionService.GetEntidadIdsPendientesAsync("Cuentas"); } catch { idsPorAprobar = new HashSet<Guid>(); }
         loading = false;
     }
 
@@ -656,6 +669,8 @@
                         e.IntervaloCambioDias = intervaloDias;
                         e.GruposSeguridad = gruposSeguridadNorm;
                         e.Descripcion = descripcion;
+                        // Detach para evitar que el change tracker persista cambios accidentalmente
+                        Db.Entry(e).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
                     }
                 }
                 else
@@ -680,15 +695,35 @@
                         e.IntervaloCambioDias = intervaloDias;
                         e.GruposSeguridad = gruposSeguridadNorm;
                         e.Descripcion = descripcion;
+                        // Detach para evitar que el change tracker persista cambios accidentalmente
+                        Db.Entry(e).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
                     }
                 }
             }
         }
-        await Db.SaveChangesAsync();
-
+        // Para altas (create): guardar en BD — el ítem queda oculto hasta aprobación.
+        // Para ediciones: NO guardar aún — los datos propuestos se almacenan en el registro de aprobación.
         var esModificacion = editingItem != null;
-        await AuditLogService.RegistrarAsync("Cuentas", entidadId, esModificacion ? "Actualizar" : "Crear", $"Cuenta: {nombreNorm}", UserService.UserId);
-        await AprobacionService.RegistrarAsync("Cuentas", entidadId, "Por aprobar", esModificacion ? "Modificación de cuenta" : "Alta de cuenta", UserService.UserId);
+        if (!esModificacion) await Db.SaveChangesAsync();
+        await AuditLogService.RegistrarAsync("Cuentas", entidadId, esModificacion ? "Solicitar edición" : "Crear", $"Cuenta: {nombreNorm}", UserService.UserId);
+        if (esModificacion)
+        {
+            // Para ediciones: no aplicar cambios inmediatamente, serializar como datos propuestos
+            var propuestoCuenta = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                Tipo = formTipo, Nombre = nombreNorm, EstatusId = eid.ToString(),
+                AreaId = areaId?.ToString(), AplicacionId = aplicacionId?.ToString(),
+                Responsable = responsable, Origen = origen, ServicioRelacionado = servicioRel,
+                TipoConfiguracionCambio = tipoConfig, IntervaloCambioDias = intervaloDias,
+                GruposSeguridad = gruposSeguridadNorm, Descripcion = descripcion
+            });
+            await AprobacionService.RegistrarAsync("Cuentas", entidadId, "Por aprobar", "Modificación de cuenta", UserService.UserId,
+                tipoAccion: "Editar", datosPropuestos: propuestoCuenta);
+        }
+        else
+        {
+            await AprobacionService.RegistrarAsync("Cuentas", entidadId, "Por aprobar", "Alta de cuenta", UserService.UserId, tipoAccion: "Crear");
+        }
         try { await NotificarAprobadoresCuentasAsync(entidadId, nombreNorm, esModificacion, cambiosHtmlParaEmail); } catch { }
 
         CerrarModal();

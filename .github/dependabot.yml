@@ -1,0 +1,45 @@
+version: 2
+updates:
+  # Paquetes NuGet (.NET)
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "America/Caracas"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "dotnet"
+    groups:
+      # Agrupar actualizaciones de Microsoft en un solo PR
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+      # Agrupar ClosedXML y DocumentFormat en un solo PR
+      export-libs:
+        patterns:
+          - "ClosedXML"
+          - "DocumentFormat.OpenXml"
+          - "PdfSharpCore"
+          - "MigraDocCore.*"
+    ignore:
+      # No actualizar automáticamente .NET runtime major versions
+      - dependency-name: "Microsoft.AspNetCore.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.EntityFrameworkCore*"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "08:00"
+      timezone: "America/Caracas"
+    labels:
+      - "dependencies"
+      - "github-actions"

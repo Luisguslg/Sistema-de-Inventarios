@@ -13,4 +13,9 @@ public class Aprobacion
     public string? Comentario { get; set; }
     public Guid? UsuarioId { get; set; }
     public DateTime Fecha { get; set; }
+    /// <summary>"Crear" o "Editar". Null en registros legacy (se trata como "Editar").</summary>
+    [MaxLength(20)]
+    public string? TipoAccion { get; set; }
+    /// <summary>JSON con los datos propuestos para ediciones pendientes. Null para altas.</summary>
+    public string? DatosPropuestos { get; set; }
 }

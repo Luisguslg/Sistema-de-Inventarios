@@ -266,6 +266,12 @@ CREATE TABLE [EmailOutbox] (
     [RetryCount] int NOT NULL,
     CONSTRAINT [PK_EmailOutbox] PRIMARY KEY ([Id]));", ct);
             }
+            // Columnas de gating añadidas en v2 (AprobacionGating migration) — idempotente
+            await db.Database.ExecuteSqlRawAsync(@"
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aprobaciones') AND name = 'TipoAccion')
+    ALTER TABLE [Aprobaciones] ADD [TipoAccion] nvarchar(20) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aprobaciones') AND name = 'DatosPropuestos')
+    ALTER TABLE [Aprobaciones] ADD [DatosPropuestos] nvarchar(max) NULL;", ct);
             if (!await db.TableExistsAsync("AprobacionVotos", ct))
             {
                 await db.Database.ExecuteSqlRawAsync(@"

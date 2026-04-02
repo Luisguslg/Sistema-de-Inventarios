@@ -419,10 +419,13 @@ app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string format
     else if (modulo.Equals("Operaciones", StringComparison.OrdinalIgnoreCase) || modulo.Equals("Tecnologia", StringComparison.OrdinalIgnoreCase))
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var aprobSvcOp = scope.ServiceProvider.GetService<IAprobacionService>();
+        var pendientesOp = aprobSvcOp != null ? await aprobSvcOp.GetCrearPendientesAsync("Operaciones") : new HashSet<Guid>();
         IReadOnlyList<IReadOnlyDictionary<string, object?>> datos;
         if (await db.TableExistsAsync("Offices"))
         {
             IQueryable<IITS.Entities.Operacion> query = db.Operaciones.AsNoTracking()
+                .Where(o => !pendientesOp.Contains(o.Id))
                 .Include(o => o.Estatus).Include(o => o.Office).Include(o => o.Area).Include(o => o.Environment)
                 .Include(o => o.Criticality).Include(o => o.Category).Include(o => o.Manufacturer).Include(o => o.DeviceModel).Include(o => o.Alojamiento).Include(o => o.OwnerArea);
             if (!string.IsNullOrWhiteSpace(areaFilter))
@@ -471,6 +474,7 @@ app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string format
         else
         {
             var list = await db.Operaciones.AsNoTracking()
+                .Where(o => !pendientesOp.Contains(o.Id))
                 .OrderBy(o => o.Hostname)
                 .Select(o => new { o.Hostname, o.Serial, EstatusNombre = o.Estatus != null ? o.Estatus.Nombre : null })
                 .ToListAsync();
@@ -484,6 +488,8 @@ app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string format
     else if (modulo.Equals("Cuentas", StringComparison.OrdinalIgnoreCase))
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var aprobSvcCuentas = scope.ServiceProvider.GetService<IAprobacionService>();
+        var pendientesCuentas = aprobSvcCuentas != null ? await aprobSvcCuentas.GetCrearPendientesAsync("Cuentas") : new HashSet<Guid>();
         var areasExisten = await db.TableExistsAsync("Areas");
         List<IReadOnlyDictionary<string, object?>> datos;
         Guid? estatusIdFiltro = null;
@@ -499,8 +505,8 @@ app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string format
         bool incluirServ = string.IsNullOrWhiteSpace(tipoFilter) || tipoFilter.Equals("Servicio", StringComparison.OrdinalIgnoreCase);
         if (areasExisten)
         {
-            IQueryable<IITS.Entities.CuentaPrivilegiada> qPriv = db.CuentasPrivilegiadas.AsNoTracking().Include(c => c.Estatus).Include(c => c.Area).Include(c => c.Aplicacion);
-            IQueryable<IITS.Entities.CuentaServicio> qServ = db.CuentasServicio.AsNoTracking().Include(c => c.Estatus).Include(c => c.Area).Include(c => c.Aplicacion);
+            IQueryable<IITS.Entities.CuentaPrivilegiada> qPriv = db.CuentasPrivilegiadas.AsNoTracking().Where(c => !pendientesCuentas.Contains(c.Id)).Include(c => c.Estatus).Include(c => c.Area).Include(c => c.Aplicacion);
+            IQueryable<IITS.Entities.CuentaServicio> qServ = db.CuentasServicio.AsNoTracking().Where(c => !pendientesCuentas.Contains(c.Id)).Include(c => c.Estatus).Include(c => c.Area).Include(c => c.Aplicacion);
             if (estatusIdFiltro.HasValue) { qPriv = qPriv.Where(c => c.EstatusId == estatusIdFiltro.Value); qServ = qServ.Where(c => c.EstatusId == estatusIdFiltro.Value); }
             var priv = incluirPriv ? await qPriv.OrderBy(c => c.Nombre).ToListAsync() : new List<IITS.Entities.CuentaPrivilegiada>();
             var serv = incluirServ ? await qServ.OrderBy(c => c.Nombre).ToListAsync() : new List<IITS.Entities.CuentaServicio>();
@@ -511,8 +517,8 @@ app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string format
         }
         else
         {
-            IQueryable<IITS.Entities.CuentaPrivilegiada> qPriv2 = db.CuentasPrivilegiadas.AsNoTracking().Include(c => c.Estatus).Include(c => c.Aplicacion);
-            IQueryable<IITS.Entities.CuentaServicio> qServ2 = db.CuentasServicio.AsNoTracking().Include(c => c.Estatus).Include(c => c.Aplicacion);
+            IQueryable<IITS.Entities.CuentaPrivilegiada> qPriv2 = db.CuentasPrivilegiadas.AsNoTracking().Where(c => !pendientesCuentas.Contains(c.Id)).Include(c => c.Estatus).Include(c => c.Aplicacion);
+            IQueryable<IITS.Entities.CuentaServicio> qServ2 = db.CuentasServicio.AsNoTracking().Where(c => !pendientesCuentas.Contains(c.Id)).Include(c => c.Estatus).Include(c => c.Aplicacion);
             if (estatusIdFiltro.HasValue) { qPriv2 = qPriv2.Where(c => c.EstatusId == estatusIdFiltro.Value); qServ2 = qServ2.Where(c => c.EstatusId == estatusIdFiltro.Value); }
             var priv = incluirPriv ? await qPriv2.OrderBy(c => c.Nombre).ToListAsync() : new List<IITS.Entities.CuentaPrivilegiada>();
             var serv = incluirServ ? await qServ2.OrderBy(c => c.Nombre).ToListAsync() : new List<IITS.Entities.CuentaServicio>();

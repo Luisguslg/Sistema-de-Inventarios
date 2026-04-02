@@ -1,3 +1,4 @@
+using System.Text.Json;
 using IITS.Data;
 using IITS.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +29,13 @@ public class AplicacionService : IAplicacionService
 
     public async Task<List<Aplicacion>> GetAllAsync()
     {
+        // Excluir ítems con un alta ("Crear") pendiente de aprobación — no son parte del inventario definitivo aún.
+        var pendientesCrear = _aprobacion != null
+            ? await _aprobacion.GetCrearPendientesAsync("Aplicaciones")
+            : new HashSet<Guid>();
+
         var query = _db.Aplicaciones
+            .Where(x => !pendientesCrear.Contains(x.Id))
             .Include(x => x.Estatus)
             .AsNoTracking();
         if (await _db.TableExistsAsync("Alojamientos"))
@@ -62,7 +69,7 @@ public class AplicacionService : IAplicacionService
         await _audit.RegistrarAsync("Aplicaciones", entity.Id, "Crear", entity.Nombre, userId);
         if (_aprobacion != null)
         {
-            await _aprobacion.RegistrarAsync("Aplicaciones", entity.Id, "Por aprobar", "Alta de aplicación", userId);
+            await _aprobacion.RegistrarAsync("Aplicaciones", entity.Id, "Por aprobar", "Alta de aplicación", userId, tipoAccion: "Crear");
             try { await NotificarAprobadoresAsync("Aplicaciones", entity.Id, "Alta de aplicación", entity.Nombre); } catch { /* no fallar si EmailOutbox no existe o falla */ }
         }
         return entity;
@@ -89,14 +96,30 @@ public class AplicacionService : IAplicacionService
             if (existing.CostoAnualEstimado != entity.CostoAnualEstimado) cambios.Add($"Costo anual: {existing.CostoAnualEstimado?.ToString("N2") ?? "-"} → {entity.CostoAnualEstimado?.ToString("N2") ?? "-"}");
         }
         var detalleAudit = cambios.Count > 0 ? string.Join("; ", cambios) : entity.Nombre ?? "";
-        _db.Aplicaciones.Update(entity);
-        await _db.SaveChangesAsync();
-        await _audit.RegistrarAsync("Aplicaciones", entity.Id, "Actualizar", detalleAudit, userId);
+        await _audit.RegistrarAsync("Aplicaciones", entity.Id, "Solicitar edición", detalleAudit, userId);
         if (_aprobacion != null)
         {
-            await _aprobacion.RegistrarAsync("Aplicaciones", entity.Id, "Por aprobar", "Modificación de aplicación", userId);
+            // Serializar los datos PROPUESTOS (no aplicar al ítem hasta que sea aprobado)
+            var propuesto = JsonSerializer.Serialize(new
+            {
+                entity.Nombre, entity.Funcionalidad, entity.Propietario, entity.Responsable,
+                entity.TipoAlojamiento, entity.Proveedor, entity.ClasificacionInformacion,
+                entity.Critico, entity.IntegracionesRelevantes, entity.DependenciasTecnicas,
+                entity.ModeloLicenciamiento, entity.CostoAnualEstimado, entity.FechaAdquisicionImplementacion,
+                entity.VersionActual, entity.SLA, entity.RTO, entity.RPO, entity.Autenticacion,
+                EstatusId = entity.EstatusId.ToString(),
+                AlojamientoId = entity.AlojamientoId?.ToString()
+            });
             var cambiosHtml = cambios.Count > 0 ? string.Join("<br/>", cambios.Select(c => System.Net.WebUtility.HtmlEncode(c))) : null;
+            await _aprobacion.RegistrarAsync("Aplicaciones", entity.Id, "Por aprobar", "Modificación de aplicación", userId,
+                tipoAccion: "Editar", datosPropuestos: propuesto);
             try { await NotificarAprobadoresAsync("Aplicaciones", entity.Id, "Modificación de aplicación", entity.Nombre ?? "", cambiosHtml); } catch { /* no fallar si EmailOutbox no existe o falla */ }
+        }
+        else
+        {
+            // Sin sistema de aprobación activo: aplicar inmediatamente
+            _db.Aplicaciones.Update(entity);
+            await _db.SaveChangesAsync();
         }
     }
 

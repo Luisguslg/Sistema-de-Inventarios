@@ -1,3 +1,4 @@
+using System.Text.Json;
 using IITS.Data;
 using IITS.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -91,7 +92,18 @@ public class AprobacionService : IAprobacionService
         return list.ToHashSet();
     }
 
-    public async Task RegistrarAsync(string modulo, Guid entidadId, string estado, string? comentario = null, Guid? usuarioId = null)
+    public async Task<HashSet<Guid>> GetCrearPendientesAsync(string modulo)
+    {
+        var modulosAprob = ModulosParaFiltro(modulo);
+        var list = await _db.Aprobaciones.AsNoTracking()
+            .Where(a => a.Estado == "Por aprobar" && a.TipoAccion == "Crear" && modulosAprob.Contains(a.Modulo))
+            .Select(a => a.EntidadId)
+            .ToListAsync();
+        return list.ToHashSet();
+    }
+
+    public async Task RegistrarAsync(string modulo, Guid entidadId, string estado, string? comentario = null, Guid? usuarioId = null,
+        string? tipoAccion = null, string? datosPropuestos = null)
     {
         _db.Aprobaciones.Add(new Aprobacion
         {
@@ -101,7 +113,9 @@ public class AprobacionService : IAprobacionService
             Estado = estado,
             Comentario = comentario,
             UsuarioId = usuarioId,
-            Fecha = DateTime.UtcNow
+            Fecha = DateTime.UtcNow,
+            TipoAccion = tipoAccion,
+            DatosPropuestos = datosPropuestos
         });
         await _db.SaveChangesAsync();
     }
@@ -145,6 +159,7 @@ public class AprobacionService : IAprobacionService
                 a.Fecha = DateTime.UtcNow;
                 if (comentario != null) a.Comentario = comentario;
                 await _db.SaveChangesAsync();
+                await AplicarAprobacionAsync(a);
             }
         }
         else
@@ -154,11 +169,37 @@ public class AprobacionService : IAprobacionService
             a.Fecha = DateTime.UtcNow;
             if (comentario != null) a.Comentario = comentario;
             await _db.SaveChangesAsync();
+            await AplicarAprobacionAsync(a);
         }
 
         if (_audit != null)
             await _audit.RegistrarAsync("Aprobaciones", a.Id, "Aprobar", $"{a.Modulo} {a.EntidadId:N}", usuarioId);
         return true;
+    }
+
+    /// <summary>
+    /// Aplica el efecto de la aprobación sobre la entidad:
+    /// - "Crear": el ítem ya está en BD; al quedar sin pendientes "Crear" aparece en el inventario automáticamente.
+    /// - "Editar": deserializa DatosPropuestos y aplica los cambios al ítem existente.
+    /// </summary>
+    private async Task AplicarAprobacionAsync(Aprobacion a)
+    {
+        if (string.Equals(a.TipoAccion, "Editar", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(a.DatosPropuestos))
+        {
+            try
+            {
+                var json = JsonDocument.Parse(a.DatosPropuestos).RootElement;
+                if (string.Equals(a.Modulo, "Aplicaciones", StringComparison.OrdinalIgnoreCase))
+                    await AplicarEdicionAplicacionAsync(a.EntidadId, json);
+                else if (string.Equals(a.Modulo, "Operaciones", StringComparison.OrdinalIgnoreCase))
+                    await AplicarEdicionOperacionAsync(a.EntidadId, json);
+                else if (string.Equals(a.Modulo, "Cuentas", StringComparison.OrdinalIgnoreCase))
+                    await AplicarEdicionCuentaAsync(a.EntidadId, json);
+            }
+            catch { /* No interrumpir el flujo de aprobación por un fallo de deserialización */ }
+        }
+        // TipoAccion == "Crear": nada que hacer. El ítem ya está en BD y
+        // desaparece de GetCrearPendientesAsync al cambiar Estado a "Aprobado".
     }
 
     public async Task<bool> MarcarRechazadoAsync(Guid aprobacionId, Guid? usuarioId, string? comentario = null)
@@ -188,8 +229,164 @@ public class AprobacionService : IAprobacionService
         a.Fecha = DateTime.UtcNow;
         if (comentario != null) a.Comentario = comentario;
         await _db.SaveChangesAsync();
+        await AplicarRechazoAsync(a);
         if (_audit != null)
             await _audit.RegistrarAsync("Aprobaciones", a.Id, "Rechazar", $"{a.Modulo} {a.EntidadId:N}", usuarioId);
         return true;
+    }
+
+    /// <summary>
+    /// Aplica el efecto del rechazo:
+    /// - "Crear": el ítem nunca debió estar en el inventario → se elimina de la BD.
+    /// - "Editar" / legacy: los datos originales permanecen intactos; solo se descarta el JSON propuesto.
+    /// </summary>
+    private async Task AplicarRechazoAsync(Aprobacion a)
+    {
+        if (!string.Equals(a.TipoAccion, "Crear", StringComparison.OrdinalIgnoreCase)) return;
+        try
+        {
+            if (string.Equals(a.Modulo, "Aplicaciones", StringComparison.OrdinalIgnoreCase))
+            {
+                var ent = await _db.Aplicaciones.FindAsync(a.EntidadId);
+                if (ent != null) { _db.Aplicaciones.Remove(ent); await _db.SaveChangesAsync(); }
+            }
+            else if (string.Equals(a.Modulo, "Operaciones", StringComparison.OrdinalIgnoreCase))
+            {
+                var ent = await _db.Operaciones.FindAsync(a.EntidadId);
+                if (ent != null) { _db.Operaciones.Remove(ent); await _db.SaveChangesAsync(); }
+            }
+            else if (string.Equals(a.Modulo, "Cuentas", StringComparison.OrdinalIgnoreCase))
+            {
+                var tipo = a.DatosPropuestos != null && a.DatosPropuestos.Contains("\"Tipo\":\"Privilegiada\"") ? "Privilegiada" : "Servicio";
+                if (tipo == "Privilegiada")
+                {
+                    var ent = await _db.CuentasPrivilegiadas.FindAsync(a.EntidadId);
+                    if (ent != null) { _db.CuentasPrivilegiadas.Remove(ent); await _db.SaveChangesAsync(); }
+                }
+                else
+                {
+                    var ent = await _db.CuentasServicio.FindAsync(a.EntidadId);
+                    if (ent != null) { _db.CuentasServicio.Remove(ent); await _db.SaveChangesAsync(); }
+                }
+            }
+        }
+        catch { /* No interrumpir el registro de rechazo por fallo de limpieza */ }
+    }
+
+    private static string? GetStr(JsonElement root, string prop)
+        => root.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    private static Guid? GetGuid(JsonElement root, string prop)
+        => root.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String && Guid.TryParse(v.GetString(), out var g) ? g : null;
+    private static bool? GetBool(JsonElement root, string prop)
+        => root.TryGetProperty(prop, out var v) && v.ValueKind != JsonValueKind.Null ? v.GetBoolean() : null;
+    private static int? GetInt(JsonElement root, string prop)
+        => root.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
+    private static decimal? GetDecimal(JsonElement root, string prop)
+        => root.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : null;
+    private static DateTime? GetDate(JsonElement root, string prop)
+        => root.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String && DateTime.TryParse(v.GetString(), out var d) ? d : null;
+
+    private async Task AplicarEdicionAplicacionAsync(Guid id, JsonElement json)
+    {
+        var ent = await _db.Aplicaciones.FindAsync(id);
+        if (ent == null) return;
+        ent.Nombre = GetStr(json, "Nombre") ?? ent.Nombre;
+        ent.Funcionalidad = GetStr(json, "Funcionalidad") ?? ent.Funcionalidad;
+        ent.Propietario = GetStr(json, "Propietario") ?? ent.Propietario;
+        ent.Responsable = GetStr(json, "Responsable") ?? ent.Responsable;
+        ent.TipoAlojamiento = GetStr(json, "TipoAlojamiento") ?? ent.TipoAlojamiento;
+        ent.Proveedor = GetStr(json, "Proveedor") ?? ent.Proveedor;
+        ent.ClasificacionInformacion = GetStr(json, "ClasificacionInformacion") ?? ent.ClasificacionInformacion;
+        if (json.TryGetProperty("Critico", out var crit)) ent.Critico = crit.GetBoolean();
+        ent.IntegracionesRelevantes = GetStr(json, "IntegracionesRelevantes") ?? ent.IntegracionesRelevantes;
+        ent.DependenciasTecnicas = GetStr(json, "DependenciasTecnicas") ?? ent.DependenciasTecnicas;
+        ent.ModeloLicenciamiento = GetStr(json, "ModeloLicenciamiento");
+        ent.CostoAnualEstimado = GetDecimal(json, "CostoAnualEstimado");
+        ent.FechaAdquisicionImplementacion = GetDate(json, "FechaAdquisicionImplementacion");
+        ent.VersionActual = GetStr(json, "VersionActual");
+        ent.SLA = GetStr(json, "SLA");
+        ent.RTO = GetStr(json, "RTO");
+        ent.RPO = GetStr(json, "RPO");
+        ent.Autenticacion = GetStr(json, "Autenticacion");
+        if (GetGuid(json, "EstatusId") is Guid eid) ent.EstatusId = eid;
+        ent.AlojamientoId = GetGuid(json, "AlojamientoId");
+        await _db.SaveChangesAsync();
+    }
+
+    private async Task AplicarEdicionOperacionAsync(Guid id, JsonElement json)
+    {
+        var ent = await _db.Operaciones.FindAsync(id);
+        if (ent == null) return;
+        ent.Hostname = GetStr(json, "Hostname") ?? ent.Hostname;
+        ent.Serial = GetStr(json, "Serial") ?? ent.Serial;
+        if (GetGuid(json, "EstatusId") is Guid eid) ent.EstatusId = eid;
+        ent.OfficeId = GetGuid(json, "OfficeId");
+        ent.AreaId = GetGuid(json, "AreaId");
+        ent.AlojamientoId = GetGuid(json, "AlojamientoId");
+        ent.Propietario = GetStr(json, "Propietario");
+        ent.BCP = GetBool(json, "BCP");
+        ent.RTO = GetStr(json, "RTO");
+        ent.RPO = GetStr(json, "RPO");
+        ent.ClasificacionInformacion = GetStr(json, "ClasificacionInformacion");
+        ent.EnvironmentId = GetGuid(json, "EnvironmentId");
+        ent.CriticalityId = GetGuid(json, "CriticalityId");
+        ent.CategoryId = GetGuid(json, "CategoryId");
+        ent.ManufacturerId = GetGuid(json, "ManufacturerId");
+        ent.DeviceModelId = GetGuid(json, "DeviceModelId");
+        ent.TipoDispositivo = GetStr(json, "TipoDispositivo");
+        ent.Funcion = GetStr(json, "Funcion");
+        ent.TipoInfraestructura = GetStr(json, "TipoInfraestructura");
+        ent.Host = GetStr(json, "Host");
+        ent.RAM = GetStr(json, "RAM");
+        ent.CantidadCPU = GetInt(json, "CantidadCPU");
+        ent.VelocidadCPU = GetStr(json, "VelocidadCPU");
+        ent.CapacidadDAS = GetStr(json, "CapacidadDAS");
+        ent.CapacidadSAN = GetStr(json, "CapacidadSAN");
+        ent.SistemaOperativo = GetStr(json, "SistemaOperativo");
+        ent.Firmware = GetStr(json, "Firmware");
+        ent.GarantiaExpira = GetDate(json, "GarantiaExpira");
+        ent.IP = GetStr(json, "IP");
+        ent.MAC = GetStr(json, "MAC");
+        ent.Observaciones = GetStr(json, "Observaciones");
+        await _db.SaveChangesAsync();
+    }
+
+    private async Task AplicarEdicionCuentaAsync(Guid id, JsonElement json)
+    {
+        var tipo = GetStr(json, "Tipo") ?? "Privilegiada";
+        if (tipo == "Privilegiada")
+        {
+            var ent = await _db.CuentasPrivilegiadas.FindAsync(id);
+            if (ent == null) return;
+            ent.Nombre = GetStr(json, "Nombre") ?? ent.Nombre;
+            if (GetGuid(json, "EstatusId") is Guid eid) ent.EstatusId = eid;
+            ent.AreaId = GetGuid(json, "AreaId");
+            ent.AplicacionId = GetGuid(json, "AplicacionId");
+            ent.Responsable = GetStr(json, "Responsable");
+            ent.Origen = GetStr(json, "Origen");
+            ent.ServicioRelacionado = GetStr(json, "ServicioRelacionado");
+            ent.TipoConfiguracionCambio = GetStr(json, "TipoConfiguracionCambio");
+            ent.IntervaloCambioDias = GetInt(json, "IntervaloCambioDias");
+            ent.GruposSeguridad = GetStr(json, "GruposSeguridad");
+            ent.Descripcion = GetStr(json, "Descripcion");
+            await _db.SaveChangesAsync();
+        }
+        else
+        {
+            var ent = await _db.CuentasServicio.FindAsync(id);
+            if (ent == null) return;
+            ent.Nombre = GetStr(json, "Nombre") ?? ent.Nombre;
+            if (GetGuid(json, "EstatusId") is Guid eid) ent.EstatusId = eid;
+            ent.AreaId = GetGuid(json, "AreaId");
+            ent.AplicacionId = GetGuid(json, "AplicacionId");
+            ent.Responsable = GetStr(json, "Responsable");
+            ent.Origen = GetStr(json, "Origen");
+            ent.ServicioRelacionado = GetStr(json, "ServicioRelacionado");
+            ent.TipoConfiguracionCambio = GetStr(json, "TipoConfiguracionCambio");
+            ent.IntervaloCambioDias = GetInt(json, "IntervaloCambioDias");
+            ent.GruposSeguridad = GetStr(json, "GruposSeguridad");
+            ent.Descripcion = GetStr(json, "Descripcion");
+            await _db.SaveChangesAsync();
+        }
     }
 }

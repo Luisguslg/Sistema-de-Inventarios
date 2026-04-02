@@ -74,9 +74,15 @@
                                 <td class="col-medio" title="@Na(item.ClasificacionInformacion)">@Na(item.ClasificacionInformacion)</td>
                                 <td class="actions-cell col-acciones">
                                     <div class="buttons" style="gap: 0.35rem;">
-                                        <button type="button" class="button is-small is-info is-light" @onclick="() => AbrirEditar(item.Id)">Editar</button>
-                                        <button type="button" class="button is-small is-danger is-light" @onclick="() => Eliminar(item.Id)">Eliminar</button>
-                                        @if (idsPorAprobar.Contains(item.Id)) { <span class="tag is-warning is-light">Por aprobar</span> }
+                                        @if (idsPorAprobar.Contains(item.Id))
+                                        {
+                                            <span class="tag is-warning" title="Hay una modificación pendiente de aprobación. No se puede editar hasta que los aprobadores resuelvan.">Aprobación pendiente</span>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="button is-small is-info is-light" @onclick="() => AbrirEditar(item.Id)">Editar</button>
+                                            <button type="button" class="button is-small is-danger is-light" @onclick="() => Eliminar(item.Id)">Eliminar</button>
+                                        }
                                     </div>
                                 </td>
                             </tr>
