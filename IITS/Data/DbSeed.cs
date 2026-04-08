@@ -38,6 +38,9 @@ public static class DbSeed
         if (!await db.TableExistsAsync("Aplicaciones", ct)) return;
         try
         {
+            // Batch 1: solo ALTER TABLE. El UPDATE que referencia RTO/RPO va en un batch separado
+            // porque SQL Server valida nombres de columna al compilar el batch completo, antes de
+            // ejecutar los ALTER TABLE, lo que causa "Invalid column name" cuando las columnas no existen.
             await db.Database.ExecuteSqlRawAsync(@"
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'AlojamientoId')
     ALTER TABLE [Aplicaciones] ADD [AlojamientoId] uniqueidentifier NULL;
@@ -55,23 +58,31 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicacion
     ALTER TABLE [Aplicaciones] ADD [RTO] nvarchar(100) NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'RPO')
     ALTER TABLE [Aplicaciones] ADD [RPO] nvarchar(100) NULL;
--- Migrar datos existentes de RPORTO si aún existe la columna
-IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'RPORTO')
-BEGIN
-    UPDATE [Aplicaciones] SET [RTO] = LEFT([RPORTO], 100), [RPO] = LEFT([RPORTO], 100) WHERE [RPORTO] IS NOT NULL AND [RTO] IS NULL;
-END
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'Autenticacion')
     ALTER TABLE [Aplicaciones] ADD [Autenticacion] nvarchar(200) NULL;
 ", ct);
+        }
+        catch { /* ignorar si ya existen o no se puede alterar */ }
+
+        try
+        {
+            // Batch 2: migrar datos de RPORTO usando EXEC() para compilación en tiempo de ejecución,
+            // evitando el error de parse cuando RTO/RPO aún no existían al inicio del batch.
+            await db.Database.ExecuteSqlRawAsync(@"
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'RPORTO')
+  EXEC('UPDATE [Aplicaciones] SET [RTO] = LEFT([RPORTO], 100), [RPO] = LEFT([RPORTO], 100) WHERE [RPORTO] IS NOT NULL AND [RTO] IS NULL');
+", ct);
+        }
+        catch { /* ignorar */ }
+
+        try
+        {
             await db.Database.ExecuteSqlRawAsync(@"
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Aplicaciones_AlojamientoId' AND object_id = OBJECT_ID('Aplicaciones'))
     CREATE INDEX [IX_Aplicaciones_AlojamientoId] ON [Aplicaciones]([AlojamientoId]);
 ", ct);
         }
-        catch
-        {
-            // Ignorar si ya existen o no se puede alterar
-        }
+        catch { /* ignorar si ya existe */ }
     }
 
     /// <summary>Añade columnas opcionales a Operaciones si no existen. Idempotente. Evita que la app se caiga cuando solo está aplicada InitialSchema.</summary>
