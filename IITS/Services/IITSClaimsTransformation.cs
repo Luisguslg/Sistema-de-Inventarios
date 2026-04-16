@@ -7,11 +7,8 @@ using System.Security.Claims;
 
 namespace IITS.Services;
 
-/// <summary>
-/// Tras autenticación Windows (Negotiate), busca el usuario en la BD (Users/UserRoles/Roles)
-/// y añade claims: UserId, nombre, email, y ClaimTypes.Role por cada rol.
-/// Igual que en el IITS de ejemplo: identity.Name se compara con User.Username.
-/// </summary>
+// [ISO-064-EAS] Carga roles y permisos del usuario desde BD tras cada autenticación Windows.
+// Los claims de permiso son la única fuente de verdad para las políticas de autorización.
 public class IITSClaimsTransformation : IClaimsTransformation
 {
     private readonly AppDbContext _db;

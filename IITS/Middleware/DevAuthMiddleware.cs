@@ -3,11 +3,9 @@ using Microsoft.AspNetCore.Http;
 
 namespace IITS.Middleware;
 
-/// <summary>
-/// En Development con Auth:Mode=Dev, si no hay usuario autenticado (p. ej. sin dominio Windows),
-/// inyecta un principal con identity.Name = Auth:DevUsername para que IITSClaimsTransformation cargue el User desde BD.
-/// No se usa en producción.
-/// </summary>
+// [ISO-057-ESC] Bypass de autenticación Windows exclusivo para entorno Development.
+// Requiere Auth:Mode=Dev en configuración — en producción (Auth:Mode=Windows) este
+// middleware no actúa sobre ninguna petición.
 public class DevAuthMiddleware
 {
     private readonly RequestDelegate _next;

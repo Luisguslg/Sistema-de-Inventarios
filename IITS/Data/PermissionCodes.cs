@@ -1,5 +1,7 @@
 namespace IITS.Data;
 
+// [ISO-064-EAS] Catálogo de permisos del sistema. Cada permiso se asocia a uno o más roles
+// en RolePermission. Program.cs registra una política de autorización por cada entrada.
 public static class PermissionCodes
 {
     public const string Admin = "Perm.Admin";

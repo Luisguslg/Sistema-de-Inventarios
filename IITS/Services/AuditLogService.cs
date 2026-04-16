@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IITS.Services;
 
+// [ISO-010B-INC] Registro de auditoría de operaciones sobre inventario.
+// Cada creación, modificación o eliminación genera un AuditLog con usuario, timestamp UTC y detalle.
 public class AuditLogService : IAuditLogService
 {
     private readonly AppDbContext _db;
