@@ -19,9 +19,7 @@ var sessionTimeoutMinutes = builder.Configuration.GetValue("Auth:SessionTimeoutM
 if (sessionTimeoutMinutes < 5) sessionTimeoutMinutes = 5;
 if (sessionTimeoutMinutes > 480) sessionTimeoutMinutes = 480;
 
-// [ISO-057-ESC] Autenticación Windows (Negotiate/Kerberos). Las políticas de contraseña,
-// expiración y bloqueo son del dominio AD de KPMG; IITS no gestiona credenciales propias.
-// [ISO-038-TER] La cookie actúa como portadora de sesión con expiración configurable.
+// [ISO-057-ESC] [ISO-038-TER]
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
@@ -31,15 +29,14 @@ builder.Services.AddAuthentication(options =>
 .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
 {
     options.Cookie.Name = ".IITS.Session";
-    options.ExpireTimeSpan = TimeSpan.FromMinutes(sessionTimeoutMinutes); // [ISO-038-TER] expiración de sesión
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(sessionTimeoutMinutes);
     options.SlidingExpiration = true;
     options.LoginPath = "/";
     options.AccessDeniedPath = "/";
 })
 .AddNegotiate();
 
-// [ISO-064-EAS] Control de acceso basado en roles y permisos granulares.
-// FallbackPolicy deniega por defecto cualquier recurso no marcado explícitamente como anónimo.
+// [ISO-064-EAS]
 builder.Services.AddAuthorization(options =>
 {
     foreach (var (code, _) in PermissionCodes.All)
@@ -81,7 +78,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         builder.Configuration.GetConnectionString("IITS"),
         o => o.UseQuerySplittingBehavior(Microsoft.EntityFrameworkCore.QuerySplittingBehavior.SplitQuery)));
 
-// [ISO-082-API] Rate limiting en endpoints de exportación y auditoría — 10 req/min por cliente.
+// [ISO-082-API]
 builder.Services.AddRateLimiter(opts =>
 {
     opts.AddFixedWindowLimiter("export", o =>
@@ -320,8 +317,8 @@ if (!string.IsNullOrEmpty(pathBase))
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
-    app.UseHsts();             // [ISO-034-EDT] HSTS activo en producción
-    app.UseHttpsRedirection(); // [ISO-034-EDT] Redirección HTTP → HTTPS
+    app.UseHsts();             // [ISO-034-EDT]
+    app.UseHttpsRedirection(); // [ISO-034-EDT]
 }
 
 app.UseStaticFiles();

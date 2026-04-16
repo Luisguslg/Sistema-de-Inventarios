@@ -7,8 +7,7 @@ using System.Security.Claims;
 
 namespace IITS.Services;
 
-// [ISO-064-EAS] Carga roles y permisos del usuario desde BD tras cada autenticación Windows.
-// Los claims de permiso son la única fuente de verdad para las políticas de autorización.
+// [ISO-064-EAS]
 public class IITSClaimsTransformation : IClaimsTransformation
 {
     private readonly AppDbContext _db;

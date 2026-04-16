@@ -6,9 +6,6 @@ using Microsoft.AspNetCore.Authentication.Negotiate;
 namespace IITS.Middleware;
 
 // [ISO-038-TER] [ISO-057-ESC]
-// Establece sesión cookie tras autenticación Windows. Guarda únicamente el username
-// en la cookie para evitar headers excesivos; roles y permisos se cargan desde BD en
-// cada petición via IITSClaimsTransformation.
 public class SessionCookieSignInMiddleware
 {
     private readonly RequestDelegate _next;
@@ -32,7 +29,6 @@ public class SessionCookieSignInMiddleware
         if (context.User?.Identity?.IsAuthenticated == true &&
             context.User.Identity.AuthenticationType != CookieAuthenticationDefaults.AuthenticationScheme)
         {
-            // [ISO-038-TER] Límites de timeout: mínimo 5 min, máximo 8 horas.
             var sessionTimeoutMinutes = _config.GetValue("Auth:SessionTimeoutMinutes", 30);
             if (sessionTimeoutMinutes < 5) sessionTimeoutMinutes = 5;
             if (sessionTimeoutMinutes > 480) sessionTimeoutMinutes = 480;

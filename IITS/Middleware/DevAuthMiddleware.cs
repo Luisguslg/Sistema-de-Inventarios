@@ -3,9 +3,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace IITS.Middleware;
 
-// [ISO-057-ESC] Bypass de autenticación Windows exclusivo para entorno Development.
-// Requiere Auth:Mode=Dev en configuración — en producción (Auth:Mode=Windows) este
-// middleware no actúa sobre ninguna petición.
+// [ISO-057-ESC]
 public class DevAuthMiddleware
 {
     private readonly RequestDelegate _next;
