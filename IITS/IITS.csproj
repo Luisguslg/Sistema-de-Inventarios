@@ -45,6 +45,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="SixLabors.ImageSharp" Version="2.1.11" />
+    <PackageReference Include="System.IO.Packaging" Version="6.0.1" />
+  <PackageReference Include="System.Net.Http" Version="4.3.4" />
+  <PackageReference Include="System.Security.Cryptography.Pkcs" Version="7.0.2" />
+  <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
     <Folder Include="Data\" />
     <Folder Include="Logs\" />
     <Folder Include="wwwroot\font\" />
