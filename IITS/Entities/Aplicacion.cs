@@ -3,10 +3,6 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace IITS.Entities;
 
-/// <summary>
-/// Catálogo de aplicaciones. Campos según maestro "Catalogo de Aplicaciones.xlsx" (Ejemplo).
-/// Propietario y Responsable son texto libre (Partes fue eliminado).
-/// </summary>
 public class Aplicacion
 {
     public Guid Id { get; set; }

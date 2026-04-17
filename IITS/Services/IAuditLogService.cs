@@ -1,8 +1,5 @@
 namespace IITS.Services;
 
-/// <summary>
-/// Servicio de auditoría: registra en AuditLogs (y opcionalmente en archivo) las acciones sobre entidades.
-/// </summary>
 public interface IAuditLogService
 {
     Task RegistrarAsync(string tabla, Guid entidadId, string accion, string? detalle = null, Guid? usuarioId = null);

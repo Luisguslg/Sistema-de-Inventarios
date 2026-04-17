@@ -1,9 +1,5 @@
 namespace IITS.Services;
 
-/// <summary>
-/// Usuario actual y permisos. Por ahora sin autenticación real: se usa config o valor por defecto.
-/// Cuando se integre AD/Negotiate, aquí se resuelve el usuario y sus roles.
-/// </summary>
 public interface ICurrentUserService
 {
     Guid? UserId { get; }

@@ -3,11 +3,6 @@ using Microsoft.AspNetCore.Http;
 
 namespace IITS.Middleware;
 
-/// <summary>
-/// En Development con Auth:Mode=Dev, si no hay usuario autenticado (p. ej. sin dominio Windows),
-/// inyecta un principal con identity.Name = Auth:DevUsername para que IITSClaimsTransformation cargue el User desde BD.
-/// No se usa en producción.
-/// </summary>
 public class DevAuthMiddleware
 {
     private readonly RequestDelegate _next;

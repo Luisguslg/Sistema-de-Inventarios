@@ -29,7 +29,6 @@ public class AplicacionService : IAplicacionService
 
     public async Task<List<Aplicacion>> GetAllAsync()
     {
-        // Excluir ítems con un alta ("Crear") pendiente de aprobación — no son parte del inventario definitivo aún.
         var pendientesCrear = _aprobacion != null
             ? await _aprobacion.GetCrearPendientesAsync("Aplicaciones")
             : new HashSet<Guid>();
@@ -99,7 +98,6 @@ public class AplicacionService : IAplicacionService
         await _audit.RegistrarAsync("Aplicaciones", entity.Id, "Solicitar edición", detalleAudit, userId);
         if (_aprobacion != null)
         {
-            // Serializar los datos PROPUESTOS (no aplicar al ítem hasta que sea aprobado)
             var propuesto = JsonSerializer.Serialize(new
             {
                 entity.Nombre, entity.Funcionalidad, entity.Propietario, entity.Responsable,
@@ -117,7 +115,6 @@ public class AplicacionService : IAplicacionService
         }
         else
         {
-            // Sin sistema de aprobación activo: aplicar inmediatamente
             _db.Aplicaciones.Update(entity);
             await _db.SaveChangesAsync();
         }

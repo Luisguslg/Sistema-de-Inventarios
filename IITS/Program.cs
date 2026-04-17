@@ -91,11 +91,9 @@ builder.Services.AddRateLimiter(opts =>
 
 var app = builder.Build();
 
-// Carpeta Logs para escritura de logs (permisos de escritura para el identity del App Pool en IIS).
 var logsDir = Path.Combine(app.Environment.ContentRootPath, "Logs");
 if (!Directory.Exists(logsDir)) Directory.CreateDirectory(logsDir);
 
-// Comando de consola: leer columnas del Excel maestro "Catalogo de Aplicaciones.xlsx".
 if (args.Contains("read-catalogo-aplicaciones"))
 {
     var path = args.Length > 1 ? args[1] : Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Ejemplo", "Catalogo de Aplicaciones.xlsx");
@@ -117,7 +115,6 @@ if (args.Contains("read-catalogo-aplicaciones"))
     return;
 }
 
-// Comando de consola: borrar BD, recrear y aplicar migraciones (deja todo listo desde cero).
 if (args.Contains("reset-migrations"))
 {
     using var scope = app.Services.CreateScope();
@@ -138,7 +135,6 @@ if (args.Contains("reset-migrations"))
     return;
 }
 
-// Comando de consola: desmarcar migraciones huérfanas y aplicar de nuevo (repara BD si el historial tiene IDs pero faltan tablas).
 if (args.Contains("fix-migrations"))
 {
     using var scope = app.Services.CreateScope();
@@ -149,7 +145,6 @@ if (args.Contains("fix-migrations"))
     return;
 }
 
-// Comando de consola: cargar catálogos de Tecnología (Oficinas, Áreas, Entorno de operación, Ambiente, Criticidad, Categoría, Fabricante, Modelo, Dispositivo, etc.) y datos de ejemplo. No se ejecuta al iniciar la app; úsalo para probar.
 if (args.Contains("seed-catalogs"))
 {
     using var scope = app.Services.CreateScope();
@@ -231,7 +226,6 @@ try
     }
     catch (Microsoft.Data.SqlClient.SqlException)
     {
-        // Si falta alguna tabla de catálogo, la app puede arrancar igual.
     }
     }
 }
@@ -276,10 +270,6 @@ static async Task UnmarkMigrationsIfTablesMissingAsync(AppDbContext db, IService
     catch { /* si falla, seguir; las migraciones se aplicarán manualmente */ }
 }
 
-/// <summary>
-/// Cuando la BD tiene las tablas pero __EFMigrationsHistory está vacío (p. ej. se borró),
-/// insertamos los IDs de las migraciones ya aplicadas para que MigrateAsync solo aplique las pendientes.
-/// </summary>
 static async Task SyncMigrationHistoryAsync(AppDbContext db)
 {
     var migrationsAlreadyInDb = new[]
@@ -327,8 +317,6 @@ app.UseMiddleware<SessionCookieSignInMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-// Rutas de API primero (antes de Blazor) para que no las capture el fallback y devuelva HTML
-// PDF de auditoría (pendientes + datos del módulo + aprobadores)
 app.MapGet("/api/auditoria/pdf", async (HttpContext ctx) =>
 {
     var modulo = ctx.Request.Query["modulo"].FirstOrDefault() ?? "";
@@ -348,7 +336,6 @@ app.MapGet("/api/auditoria/pdf", async (HttpContext ctx) =>
     await ctx.Response.Body.WriteAsync(bytes);
 }).RequireRateLimiting("export");
 
-// Exportación: /api/export/{modulo}/xlsx|pdf|csv (Aplicaciones, Logs, etc.)
 app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string formato, HttpContext ctx) =>
 {
     var scope = ctx.RequestServices.CreateScope();

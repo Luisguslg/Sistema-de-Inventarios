@@ -20,7 +20,6 @@ namespace IITS.Services
 
             if (File.Exists(path))
             {
-                // Create a file to write to.
                 using (StreamWriter sw = File.CreateText(path))
                 {
                     string texto = "Archivo Log creado: " + DateTime.Now.ToString("dddd, dd MMMM yyyy");

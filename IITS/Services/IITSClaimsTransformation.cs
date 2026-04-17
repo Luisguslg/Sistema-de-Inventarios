@@ -7,11 +7,6 @@ using System.Security.Claims;
 
 namespace IITS.Services;
 
-/// <summary>
-/// Tras autenticación Windows (Negotiate), busca el usuario en la BD (Users/UserRoles/Roles)
-/// y añade claims: UserId, nombre, email, y ClaimTypes.Role por cada rol.
-/// Igual que en el IITS de ejemplo: identity.Name se compara con User.Username.
-/// </summary>
 public class IITSClaimsTransformation : IClaimsTransformation
 {
     private readonly AppDbContext _db;
@@ -26,9 +21,7 @@ public class IITSClaimsTransformation : IClaimsTransformation
         var name = identity.Name;
         if (string.IsNullOrEmpty(name)) return principal;
 
-        // Buscar usuario: "DOMINIO\user", solo "user", o que termine en "\user"
         var usernameToFind = name.Contains('\\') ? name.Substring(name.IndexOf('\\') + 1) : name;
-        // EF.Functions.Like traduce a SQL; EndsWith+OrdinalIgnoreCase no se traduce
         var suffix = "\\" + usernameToFind;
         var user = await _db.Users
             .Include(u => u.UserRoles)

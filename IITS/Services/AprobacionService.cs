@@ -177,11 +177,6 @@ public class AprobacionService : IAprobacionService
         return true;
     }
 
-    /// <summary>
-    /// Aplica el efecto de la aprobación sobre la entidad:
-    /// - "Crear": el ítem ya está en BD; al quedar sin pendientes "Crear" aparece en el inventario automáticamente.
-    /// - "Editar": deserializa DatosPropuestos y aplica los cambios al ítem existente.
-    /// </summary>
     private async Task AplicarAprobacionAsync(Aprobacion a)
     {
         if (string.Equals(a.TipoAccion, "Editar", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(a.DatosPropuestos))
@@ -198,8 +193,6 @@ public class AprobacionService : IAprobacionService
             }
             catch { /* No interrumpir el flujo de aprobación por un fallo de deserialización */ }
         }
-        // TipoAccion == "Crear": nada que hacer. El ítem ya está en BD y
-        // desaparece de GetCrearPendientesAsync al cambiar Estado a "Aprobado".
     }
 
     public async Task<bool> MarcarRechazadoAsync(Guid aprobacionId, Guid? usuarioId, string? comentario = null)
@@ -235,11 +228,6 @@ public class AprobacionService : IAprobacionService
         return true;
     }
 
-    /// <summary>
-    /// Aplica el efecto del rechazo:
-    /// - "Crear": el ítem nunca debió estar en el inventario → se elimina de la BD.
-    /// - "Editar" / legacy: los datos originales permanecen intactos; solo se descarta el JSON propuesto.
-    /// </summary>
     private async Task AplicarRechazoAsync(Aprobacion a)
     {
         if (!string.Equals(a.TipoAccion, "Crear", StringComparison.OrdinalIgnoreCase)) return;

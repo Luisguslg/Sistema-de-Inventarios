@@ -8,7 +8,6 @@ public class Operacion
     public Guid Id { get; set; }
     public DateTime CreatedAt { get; set; }
 
-    // --- Requeridos ---
     public Guid EstatusId { get; set; }
     [Required, MaxLength(200)]
     public string Hostname { get; set; } = "";
@@ -41,7 +40,6 @@ public class Operacion
     [MaxLength(200)]
     public string? SistemaOperativo { get; set; }
 
-    // --- Opcionales / solo físicos ---
     public Guid? ManufacturerId { get; set; }
     public Guid? DeviceModelId { get; set; }
     [MaxLength(50)]
@@ -54,7 +52,6 @@ public class Operacion
     [MaxLength(500)]
     public string? Observaciones { get; set; }
 
-    /// <summary>BCP: Sí/No.</summary>
     public bool? BCP { get; set; }
     /// <summary>RTO: Recovery Time Objective — tiempo máximo tolerable de interrupción (ISO-067-GCS).</summary>
     [MaxLength(100)]
@@ -62,10 +59,8 @@ public class Operacion
     /// <summary>RPO: Recovery Point Objective — pérdida máxima de datos tolerable (ISO-067-GCS).</summary>
     [MaxLength(100)]
     public string? RPO { get; set; }
-    /// <summary>Propietario: Auditoría, Impuesto y Legal, Asesoría, Infraestructura, Todas.</summary>
     [MaxLength(100)]
     public string? Propietario { get; set; }
-    /// <summary>Clasificación de la información (incluye N/A).</summary>
     [MaxLength(200)]
     public string? ClasificacionInformacion { get; set; }
 

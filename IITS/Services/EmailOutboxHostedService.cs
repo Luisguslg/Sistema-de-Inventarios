@@ -38,11 +38,9 @@ public class EmailOutboxHostedService : BackgroundService
             }
             catch (SqlException ex) when (ex.Number == 208)
             {
-                // Tabla EmailOutbox aún no existe (migraciones pendientes); no loguear.
             }
             catch (OperationCanceledException)
             {
-                // Cierre de la aplicación; no loguear.
             }
             catch (Exception ex)
             {

@@ -669,7 +669,6 @@
                         e.IntervaloCambioDias = intervaloDias;
                         e.GruposSeguridad = gruposSeguridadNorm;
                         e.Descripcion = descripcion;
-                        // Detach para evitar que el change tracker persista cambios accidentalmente
                         Db.Entry(e).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
                     }
                 }
@@ -695,20 +694,16 @@
                         e.IntervaloCambioDias = intervaloDias;
                         e.GruposSeguridad = gruposSeguridadNorm;
                         e.Descripcion = descripcion;
-                        // Detach para evitar que el change tracker persista cambios accidentalmente
                         Db.Entry(e).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
                     }
                 }
             }
         }
-        // Para altas (create): guardar en BD — el ítem queda oculto hasta aprobación.
-        // Para ediciones: NO guardar aún — los datos propuestos se almacenan en el registro de aprobación.
         var esModificacion = editingItem != null;
         if (!esModificacion) await Db.SaveChangesAsync();
         await AuditLogService.RegistrarAsync("Cuentas", entidadId, esModificacion ? "Solicitar edición" : "Crear", $"Cuenta: {nombreNorm}", UserService.UserId);
         if (esModificacion)
         {
-            // Para ediciones: no aplicar cambios inmediatamente, serializar como datos propuestos
             var propuestoCuenta = System.Text.Json.JsonSerializer.Serialize(new
             {
                 Tipo = formTipo, Nombre = nombreNorm, EstatusId = eid.ToString(),

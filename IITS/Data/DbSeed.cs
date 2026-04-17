@@ -38,9 +38,6 @@ public static class DbSeed
         if (!await db.TableExistsAsync("Aplicaciones", ct)) return;
         try
         {
-            // Batch 1: solo ALTER TABLE. El UPDATE que referencia RTO/RPO va en un batch separado
-            // porque SQL Server valida nombres de columna al compilar el batch completo, antes de
-            // ejecutar los ALTER TABLE, lo que causa "Invalid column name" cuando las columnas no existen.
             await db.Database.ExecuteSqlRawAsync(@"
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'AlojamientoId')
     ALTER TABLE [Aplicaciones] ADD [AlojamientoId] uniqueidentifier NULL;
@@ -66,8 +63,6 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicacion
 
         try
         {
-            // Batch 2: migrar datos de RPORTO usando EXEC() para compilación en tiempo de ejecución,
-            // evitando el error de parse cuando RTO/RPO aún no existían al inicio del batch.
             await db.Database.ExecuteSqlRawAsync(@"
 IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aplicaciones') AND name = 'RPORTO')
   EXEC('UPDATE [Aplicaciones] SET [RTO] = LEFT([RPORTO], 100), [RPO] = LEFT([RPORTO], 100) WHERE [RPORTO] IS NOT NULL AND [RTO] IS NULL');
@@ -123,10 +118,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operacione
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Operaciones') AND name = 'ClasificacionInformacion') ALTER TABLE [Operaciones] ADD [ClasificacionInformacion] nvarchar(200) NULL;
 ", ct);
         }
-        catch
-        {
-            // Ignorar si ya existen o no se puede alterar
-        }
+        catch { }
     }
 
     /// <summary>Añade columnas opcionales a CuentasPrivilegiadas y CuentasServicio si no existen. Idempotente.</summary>
@@ -277,7 +269,6 @@ CREATE TABLE [EmailOutbox] (
     [RetryCount] int NOT NULL,
     CONSTRAINT [PK_EmailOutbox] PRIMARY KEY ([Id]));", ct);
             }
-            // Columnas de gating añadidas en v2 (AprobacionGating migration) — idempotente
             await db.Database.ExecuteSqlRawAsync(@"
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Aprobaciones') AND name = 'TipoAccion')
     ALTER TABLE [Aprobaciones] ADD [TipoAccion] nvarchar(20) NULL;

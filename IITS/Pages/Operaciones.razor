@@ -379,7 +379,6 @@
             deviceModelsList = await Db.DeviceModels.AsNoTracking().Include(d => d.Manufacturer).OrderBy(d => d.Name).ToListAsync();
             hostsFisicosList = (await Db.Operaciones.AsNoTracking().Where(o => o.TipoInfraestructura != null && o.TipoInfraestructura.Contains("Físico")).Select(o => o.Hostname).ToListAsync()).Where(h => !string.IsNullOrWhiteSpace(h)).OrderBy(h => h).Distinct().ToList();
             await CargarCatalogItems();
-            // Excluir ítems con alta pendiente de aprobación y obtener pendientes para badge
             var pendientesCrear = await AprobacionService.GetCrearPendientesAsync("Operaciones");
             idsPorAprobar = await AprobacionService.GetEntidadIdsPendientesAsync("Operaciones");
             var full = await Db.Operaciones.AsNoTracking()
@@ -658,9 +657,7 @@
             if ((ent.Host ?? "") != (formHost?.Trim() ?? "")) cambios.Add($"Host: {ent.Host ?? "-"} → {formHost?.Trim() ?? "-"}");
             if (ent.CantidadCPU != formCantidadCPU) cambios.Add($"Cant. CPU/VP: {ent.CantidadCPU} → {formCantidadCPU}");
             var detalleAudit = cambios.Count > 0 ? string.Join("; ", cambios) : hostname;
-            // Descartar los cambios del change tracker para no contaminar futuras operaciones
             Db.Entry(ent).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
-            // No aplicar los cambios hasta aprobación — serializar datos propuestos
             await AuditLogService.RegistrarAsync("Operaciones", ent.Id, "Solicitar edición", detalleAudit, UserService.UserId);
             var propuestoOp = System.Text.Json.JsonSerializer.Serialize(new
             {
