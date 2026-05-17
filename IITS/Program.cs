@@ -32,6 +32,15 @@ builder.Services.AddAuthentication(options =>
     options.SlidingExpiration = true;
     options.LoginPath = "/";
     options.AccessDeniedPath = "/";
+    // [SEC-AUDIT]: Mitigación para CWE-614 / CWE-1004 - La cookie de sesión se emite con los
+    // atributos HttpOnly (impide acceso desde JavaScript, mitiga XSS), SameSite=Strict
+    // (bloquea envío en solicitudes cross-site, mitiga CSRF) y Secure (transmisión únicamente
+    // sobre HTTPS en producción). En entorno de desarrollo se usa SameAsRequest para permitir HTTP local.
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
 })
 .AddNegotiate();
 
@@ -91,8 +100,15 @@ builder.Services.AddRateLimiter(opts =>
 
 var app = builder.Build();
 
-// Carpeta Logs para escritura de logs (permisos de escritura para el identity del App Pool en IIS).
-var logsDir = Path.Combine(app.Environment.ContentRootPath, "Logs");
+// [SEC-AUDIT]: Mitigación para CWE-23 - La ruta del directorio de logs se canonicaliza
+// mediante Path.GetFullPath para eliminar segmentos relativos (../) antes de su uso.
+// Se valida explícitamente que el path resultante esté subordinado al ContentRootPath,
+// previniendo escrituras fuera del árbol de la aplicación ante cualquier manipulación del entorno.
+var contentRoot = Path.GetFullPath(app.Environment.ContentRootPath);
+var logsDir = Path.GetFullPath(Path.Combine(contentRoot, "Logs"));
+if (!logsDir.StartsWith(contentRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+    && !logsDir.Equals(contentRoot, StringComparison.OrdinalIgnoreCase))
+    throw new InvalidOperationException("Ruta de Logs fuera del directorio raíz de la aplicación.");
 if (!Directory.Exists(logsDir)) Directory.CreateDirectory(logsDir);
 
 // Comando de consola: leer columnas del Excel maestro "Catalogo de Aplicaciones.xlsx".
@@ -315,9 +331,35 @@ if (!string.IsNullOrEmpty(pathBase))
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
-    app.UseHsts();
+    app.UseHsts();           // Strict-Transport-Security (incluido por UseHsts)
     app.UseHttpsRedirection();
 }
+
+// [SEC-AUDIT]: Mitigación para CWE-16 / CWE-693 - Middleware de cabeceras de seguridad HTTP.
+// Se inyectan en cada respuesta para reducir la superficie de ataque a nivel de transporte:
+//   X-Content-Type-Options: nosniff     → previene MIME-type sniffing (CWE-430).
+//   X-Frame-Options: SAMEORIGIN         → bloquea framing externo, mitiga clickjacking (CWE-1021).
+//   Referrer-Policy                     → restringe filtración de URLs en cabecera Referer.
+//   Permissions-Policy                  → deshabilita APIs de hardware no utilizadas.
+//   Content-Security-Policy             → define fuentes de contenido permitidas; unsafe-inline y
+//                                         unsafe-eval son requeridos por Blazor Server y SignalR;
+//                                         connect-src incluye ws:/wss: para el WebSocket de SignalR.
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "SAMEORIGIN";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
+    context.Response.Headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data:; " +
+        "font-src 'self'; " +
+        "connect-src 'self' ws: wss:; " +
+        "frame-ancestors 'self'";
+    await next();
+});
 
 app.UseStaticFiles();
 app.UseRouting();
