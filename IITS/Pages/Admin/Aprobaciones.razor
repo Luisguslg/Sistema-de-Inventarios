@@ -1,0 +1,146 @@
+@page "/admin/aprobaciones"
+@inject IITS.Services.IAprobacionService AprobacionService
+@inject IITS.Data.AppDbContext Db
+
+<PageTitle>Aprobaciones</PageTitle>
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Aprobaciones</h1>
+        <p class="has-text-grey">Registro de solicitudes de aprobación por módulo.</p>
+        <div class="buttons mt-4">
+            <a href="@GetExportUrl("xlsx")" class="button is-light" target="_blank" download>Excel</a>
+            <a href="@GetExportUrl("pdf")" class="button is-light" target="_blank" download>PDF</a>
+            <a href="@GetExportUrl("csv")" class="button is-light" target="_blank" download>CSV</a>
+        </div>
+        <div class="field is-horizontal mt-4">
+            <div class="field-label is-normal"><label class="label">Módulo</label></div>
+            <div class="field-body">
+                <div class="field is-narrow">
+                    <div class="control">
+                        <select class="select-clean" @bind="filtroModulo" @bind:after="Cargar">
+                            <option value="">Todos</option>
+                            <option value="Aplicaciones">Aplicaciones</option>
+                            <option value="Operaciones">Operaciones</option>
+                            <option value="CuentasPrivilegiadas">Cuentas privilegiadas</option>
+                            <option value="CuentasServicio">Cuentas servicio</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field-label is-normal"><label class="label">Estado</label></div>
+                <div class="field is-narrow">
+                    <div class="control">
+                        <select class="select-clean" @bind="filtroEstado" @bind:after="Cargar">
+                            <option value="">Todos</option>
+                            <option value="Aprobado">Aprobadas</option>
+                            <option value="Rechazado">Rechazadas</option>
+                            <option value="Por aprobar">Pendientes</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @if (loading) { <p>Cargando...</p> }
+        else
+        {
+            <table class="table is-fullwidth is-striped mt-4">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Módulo</th>
+                        <th>Registro</th>
+                        <th>Estado</th>
+                        <th>Comentario</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in aprobacionesFiltradas)
+                    {
+                        <tr>
+                            <td>@a.Fecha.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@a.Modulo</td>
+                            <td>@(nombresEntidad.TryGetValue((a.Modulo ?? "", a.EntidadId), out var nom) ? nom : a.EntidadId.ToString("N")[..8] + "…")</td>
+                            <td>@a.Estado</td>
+                            <td>@(a.Comentario ?? "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!aprobacionesFiltradas.Any()) { <p class="has-text-grey">No hay registros con los filtros seleccionados.</p> }
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private List<IITS.Entities.Aprobacion> aprobaciones = new();
+    private Dictionary<(string Modulo, Guid EntidadId), string> nombresEntidad = new();
+    private string filtroModulo = "";
+    private string filtroEstado = "";
+    private bool loading = true;
+
+    private IEnumerable<IITS.Entities.Aprobacion> aprobacionesFiltradas
+    {
+        get
+        {
+            var list = aprobaciones.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(filtroEstado))
+                list = list.Where(a => (a.Estado ?? "").Equals(filtroEstado, StringComparison.OrdinalIgnoreCase));
+            return list;
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        aprobaciones = await AprobacionService.GetAllAsync(string.IsNullOrWhiteSpace(filtroModulo) ? null : filtroModulo);
+        nombresEntidad = await ResolverNombresAsync();
+        loading = false;
+    }
+
+    private async Task<Dictionary<(string, Guid), string>> ResolverNombresAsync()
+    {
+        var dict = new Dictionary<(string, Guid), string>();
+        var porModulo = aprobaciones.GroupBy(a => a.Modulo ?? "").ToDictionary(g => g.Key, g => g.Select(x => x.EntidadId).Distinct().ToList());
+        foreach (var kv in porModulo.Where(k => !string.IsNullOrEmpty(k.Key)))
+        {
+            var mod = kv.Key;
+            var ids = kv.Value;
+            if (string.Equals(mod, "Aplicaciones", StringComparison.OrdinalIgnoreCase))
+            {
+                var apps = await Db.Aplicaciones.AsNoTracking().Where(a => ids.Contains(a.Id)).Select(a => new { a.Id, a.Nombre }).ToListAsync();
+                foreach (var a in apps) dict[(mod, a.Id)] = a.Nombre ?? "";
+            }
+            else if (string.Equals(mod, "Operaciones", StringComparison.OrdinalIgnoreCase))
+            {
+                var ops = await Db.Operaciones.AsNoTracking().Where(o => ids.Contains(o.Id)).Select(o => new { o.Id, o.Hostname }).ToListAsync();
+                foreach (var o in ops) dict[(mod, o.Id)] = o.Hostname ?? "";
+            }
+            else if (string.Equals(mod, "CuentasPrivilegiadas", StringComparison.OrdinalIgnoreCase) || string.Equals(mod, "CuentasServicio", StringComparison.OrdinalIgnoreCase))
+            {
+                var priv = await Db.CuentasPrivilegiadas.AsNoTracking().Where(c => ids.Contains(c.Id)).Select(c => new { c.Id, c.Nombre }).ToListAsync();
+                var serv = await Db.CuentasServicio.AsNoTracking().Where(c => ids.Contains(c.Id)).Select(c => new { c.Id, c.Nombre }).ToListAsync();
+                foreach (var c in priv) dict[(mod, c.Id)] = c.Nombre ?? "";
+                foreach (var c in serv) dict[(mod, c.Id)] = c.Nombre ?? "";
+            }
+            else if (string.Equals(mod, "Cuentas", StringComparison.OrdinalIgnoreCase))
+            {
+                var priv = await Db.CuentasPrivilegiadas.AsNoTracking().Where(c => ids.Contains(c.Id)).Select(c => new { c.Id, c.Nombre }).ToListAsync();
+                var serv = await Db.CuentasServicio.AsNoTracking().Where(c => ids.Contains(c.Id)).Select(c => new { c.Id, c.Nombre }).ToListAsync();
+                foreach (var c in priv) dict[(mod, c.Id)] = c.Nombre ?? "";
+                foreach (var c in serv) dict[(mod, c.Id)] = c.Nombre ?? "";
+            }
+        }
+        return dict;
+    }
+
+    private string GetExportUrl(string formato)
+    {
+        var q = new List<string>();
+        if (!string.IsNullOrWhiteSpace(filtroModulo)) q.Add($"modulo={Uri.EscapeDataString(filtroModulo)}");
+        if (!string.IsNullOrWhiteSpace(filtroEstado)) q.Add($"estado={Uri.EscapeDataString(filtroEstado)}");
+        var query = q.Count > 0 ? "?" + string.Join("&", q) : "";
+        return $"{PathBase.TrimEnd('/')}/api/export/Aprobaciones/{formato}{query}";
+    }
+}

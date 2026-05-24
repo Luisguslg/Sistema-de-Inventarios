@@ -1,0 +1,239 @@
+@page "/admin/maestro-datos"
+@inject IITS.Services.IMasterDataService MasterData
+@inject IITS.Services.ToastService Toast
+@inject IITS.Data.AppDbContext Db
+
+<PageTitle>Maestro de datos</PageTitle>
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Maestro de datos</h1>
+        <p class="has-text-grey mb-4">Catálogos de referencia usados en inventarios. Seleccione una tabla para ver filas, cuántas veces se usa cada valor y gestionar (alta, edición, baja con validación).</p>
+
+        <div class="field">
+            <label class="label">Tabla / Catálogo</label>
+            <div class="control">
+                <select class="select-clean input" style="max-width: 320px;" @bind="selectedCatalogKey" @bind:after="OnCatalogChanged">
+                    <option value="">— Seleccione una tabla —</option>
+                    @foreach (var c in catalogs)
+                    {
+                        <option value="@c.Key">@c.DisplayName</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(selectedCatalogKey))
+        {
+            <div class="level mt-4">
+                <div class="level-left">
+                    <div class="level-item">
+                        <span class="tag is-light">@rows.Count registro(s)</span>
+                    </div>
+                </div>
+                <div class="level-right">
+                    <div class="level-item">
+                        <button type="button" class="button is-primary" @onclick="AbrirNuevo">Nueva fila</button>
+                    </div>
+                </div>
+            </div>
+
+            @if (loading)
+            {
+                <p class="mt-4">Cargando...</p>
+            }
+            else if (currentCatalog != null)
+            {
+                <div class="table-container mt-3">
+                    <table class="table is-fullwidth is-bordered is-striped">
+                        <thead>
+                            <tr>
+                                <th>@(currentCatalog.Col1Label ?? "Columna 1")</th>
+                                @if (currentCatalog.HasSecondaryColumn)
+                                {
+                                    <th>@(currentCatalog.Col2Label ?? "Columna 2")</th>
+                                }
+                                <th class="has-text-centered" style="width: 110px;">Veces usado</th>
+                                <th class="has-text-right" style="width: 160px;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in rows)
+                            {
+                                <tr>
+                                    <td>@r.Col1</td>
+                                    @if (currentCatalog.HasSecondaryColumn)
+                                    {
+                                        <td>@(r.Col2 ?? "—")</td>
+                                    }
+                                    <td class="has-text-centered">
+                                        <span class="tag @(r.VecesUsado > 0 ? "is-info" : "is-light")">@r.VecesUsado</span>
+                                    </td>
+                                    <td class="has-text-right">
+                                        <button type="button" class="button is-small is-light" @onclick="() => AbrirEditar(r)">Editar</button>
+                                        <button type="button" class="button is-small is-light is-danger" @onclick="() => Eliminar(r)" disabled="@(r.VecesUsado > 0)" title="@(r.VecesUsado > 0 ? "No se puede eliminar: tiene referencias" : "Eliminar")">Eliminar</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (rows.Count == 0)
+                {
+                    <p class="has-text-grey mt-4">No hay registros en este catálogo. Use «Nueva fila» para agregar.</p>
+                }
+            }
+        }
+        else
+        {
+            <p class="has-text-grey mt-4">Seleccione una tabla para ver y gestionar sus datos.</p>
+        }
+    </div>
+</div>
+
+@* Modal Nueva / Editar *@
+@if (mostrarModal && currentCatalog != null)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModal"></div>
+        <div class="modal-card" style="max-width: 420px;">
+            <header class="modal-card-head">
+                <p class="modal-card-title">@(editingRow == null ? "Nueva fila" : "Editar") — @currentCatalog.DisplayName</p>
+                <button type="button" class="delete" aria-label="Cerrar" @onclick="CerrarModal"></button>
+            </header>
+            <section class="modal-card-body">
+                <div class="field">
+                    <label class="label">@(currentCatalog.Col1Label ?? "Valor")</label>
+                    <div class="control">
+                        @if (currentCatalog.Key == "estatus")
+                        {
+                            <input type="number" class="input" @bind="formCol1" placeholder="Código numérico" />
+                        }
+                        else
+                        {
+                            <input type="text" class="input" @bind="formCol1" placeholder="@(currentCatalog.Col1Label ?? "Nombre")" />
+                        }
+                    </div>
+                </div>
+                @if (currentCatalog.HasSecondaryColumn)
+                {
+                    <div class="field">
+                        <label class="label">@(currentCatalog.Col2Label ?? "Columna 2")</label>
+                        <div class="control">
+                            @if (currentCatalog.Key == "modelos")
+                            {
+                                <select class="select-clean input" @bind="formCol2">
+                                    <option value="">— Fabricante —</option>
+                                    @foreach (var v in fabricantesList)
+                                    {
+                                        <option value="@v.Name">@v.Name</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input type="text" class="input" @bind="formCol2" placeholder="@(currentCatalog.Col2Label)" />
+                            }
+                        </div>
+                    </div>
+                }
+            </section>
+            <footer class="modal-card-foot">
+                <button type="button" class="button is-primary" @onclick="Guardar">Guardar</button>
+                <button type="button" class="button is-light" @onclick="CerrarModal">Cancelar</button>
+            </footer>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MasterCatalogInfo> catalogs = new();
+    private string selectedCatalogKey = "";
+    private MasterCatalogInfo? currentCatalog => catalogs.FirstOrDefault(c => c.Key == selectedCatalogKey);
+    private List<MasterDataRow> rows = new();
+    private bool loading;
+    private bool mostrarModal;
+    private MasterDataRow? editingRow;
+    private string formCol1 = "";
+    private string? formCol2 = "";
+    private List<IITS.Entities.Vendor> fabricantesList = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        catalogs = await MasterData.GetAvailableCatalogsAsync();
+        if (catalogs.Count > 0 && string.IsNullOrEmpty(selectedCatalogKey))
+            selectedCatalogKey = catalogs[0].Key;
+        await LoadRowsAsync();
+    }
+
+    private async Task OnCatalogChanged()
+    {
+        await LoadRowsAsync();
+    }
+
+    private async Task LoadRowsAsync()
+    {
+        if (string.IsNullOrEmpty(selectedCatalogKey)) { rows = new(); return; }
+        loading = true;
+        try
+        {
+            rows = await MasterData.GetRowsAsync(selectedCatalogKey);
+            if (selectedCatalogKey == "modelos")
+                fabricantesList = await Db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+        }
+        finally { loading = false; }
+    }
+
+    private void AbrirNuevo()
+    {
+        editingRow = null;
+        formCol1 = "";
+        formCol2 = currentCatalog?.Key == "estatus" ? "" : null;
+        if (currentCatalog?.Key == "modelos" && fabricantesList.Count > 0)
+            formCol2 = fabricantesList[0].Name;
+        mostrarModal = true;
+    }
+
+    private void AbrirEditar(MasterDataRow r)
+    {
+        editingRow = r;
+        formCol1 = r.Col1;
+        formCol2 = r.Col2;
+        mostrarModal = true;
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+        editingRow = null;
+    }
+
+    private async Task Guardar()
+    {
+        var (ok, error) = await MasterData.SaveAsync(selectedCatalogKey, editingRow?.Id, formCol1, formCol2);
+        if (!ok)
+        {
+            Toast.ShowToast(error ?? "Error al guardar", IITS.Services.ToastLevel.Warning);
+            return;
+        }
+        Toast.ShowToast(editingRow == null ? "Registro creado." : "Registro actualizado.", IITS.Services.ToastLevel.Success);
+        CerrarModal();
+        await LoadRowsAsync();
+    }
+
+    private async Task Eliminar(MasterDataRow r)
+    {
+        if (r.VecesUsado > 0)
+        {
+            Toast.ShowToast("No se puede eliminar: hay registros que usan este valor.", IITS.Services.ToastLevel.Warning);
+            return;
+        }
+        var (ok, error) = await MasterData.TryDeleteAsync(selectedCatalogKey, r.Id);
+        if (!ok)
+        {
+            Toast.ShowToast(error ?? "No se pudo eliminar", IITS.Services.ToastLevel.Warning);
+            return;
+        }
+        Toast.ShowToast("Registro eliminado.", IITS.Services.ToastLevel.Success);
+        await LoadRowsAsync();
+    }
+}

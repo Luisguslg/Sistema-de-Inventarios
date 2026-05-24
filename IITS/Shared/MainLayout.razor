@@ -1,0 +1,22 @@
+@inherits LayoutComponentBase
+@inject IHttpContextAccessor HttpContextAccessor
+@{
+    var _pathBase = HttpContextAccessor.HttpContext?.Request.PathBase.Value ?? "";
+    _pathBase = string.IsNullOrEmpty(_pathBase) ? "/" : _pathBase.TrimEnd('/') + "/";
+}
+<CascadingValue Value="_pathBase" Name="PathBase">
+<PageTitle>IITS</PageTitle>
+
+    <Toast />
+    <NavMenu/>
+
+<hr style="margin: 0 0 0 0 !important" />
+<br/>
+<div class="container is-fullhd">
+    @Body
+</div>
+<br/>
+<hr/>
+<Footer />
+</CascadingValue>
+

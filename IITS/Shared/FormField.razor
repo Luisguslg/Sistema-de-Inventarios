@@ -1,0 +1,21 @@
+@* Campo de formulario reutilizable: label + contenido + mensaje de validación *@
+<div class="field">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="label">@Label @if (Required) { <span class="has-text-danger">*</span> }</label>
+    }
+    <div class="control">
+        @ChildContent
+    </div>
+    @if (!string.IsNullOrEmpty(HelpText))
+    {
+        <p class="help">@HelpText</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? HelpText { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

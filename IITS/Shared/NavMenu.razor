@@ -1,0 +1,99 @@
+@inject NavigationManager NavManager
+@inject IJSRuntime JSRuntime
+@inject IITS.Services.ICurrentUserService UserService
+@inject IHttpContextAccessor HttpContextAccessor
+@{
+    var pathBase = HttpContextAccessor.HttpContext?.Request.PathBase.Value ?? "";
+    if (!string.IsNullOrEmpty(pathBase)) { pathBase = pathBase.TrimEnd('/') + "/"; } else { pathBase = "/"; }
+}
+<div>
+    <nav class="navbar" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="@(pathBase)">
+                <img class="img-kpmg" src="img/Custom_LoginLogo.jpg" alt="IITS" style="max-height: 2.5rem;" />
+            </a>
+            <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample" @onclick="ToggleNavbar">
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+            </a>
+        </div>
+
+        <div id="navbarBasicExample" class="navbar-menu">
+            <div class="navbar-start">
+                <a class="navbar-item" href="@(pathBase)">Inicio</a>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">Inventarios</a>
+                    <div class="navbar-dropdown">
+                        @if (UserService.IsAdmin || UserService.HasPermission(IITS.Data.PermissionCodes.InventoryAplicaciones))
+                        {
+                            <a class="navbar-item" href="@(pathBase)aplicaciones">Aplicaciones</a>
+                        }
+                        @if (UserService.IsAdmin || UserService.HasPermission(IITS.Data.PermissionCodes.InventoryOperaciones))
+                        {
+                            <a class="navbar-item" href="@(pathBase)operaciones">Tecnología</a>
+                        }
+                        @if (UserService.IsAdmin || UserService.HasPermission(IITS.Data.PermissionCodes.InventoryCuentas))
+                        {
+                            <a class="navbar-item" href="@(pathBase)cuentas">Cuentas</a>
+                        }
+                    </div>
+                </div>
+                @if (UserService.CanSeeLogs || UserService.HasPermission(IITS.Data.PermissionCodes.AuditView))
+                {
+                    <div class="navbar-item has-dropdown is-hoverable">
+                        <a class="navbar-link">Auditoría</a>
+                        <div class="navbar-dropdown">
+                            <a class="navbar-item" href="@(pathBase)auditoria/aplicaciones">Aplicaciones</a>
+                            <a class="navbar-item" href="@(pathBase)auditoria/operaciones">Tecnología</a>
+                            <a class="navbar-item" href="@(pathBase)auditoria/cuentas">Cuentas</a>
+                        </div>
+                    </div>
+                }
+                @if (UserService.IsAdmin || UserService.CanSeeLogs || UserService.CanSeeDataMenu)
+                {
+                    <div class="navbar-item has-dropdown is-hoverable">
+                        <a class="navbar-link">Administración</a>
+                        <div class="navbar-dropdown">
+                            <a class="navbar-item" href="@(pathBase)admin/aprobaciones">Aprobaciones</a>
+                            <a class="navbar-item" href="@(pathBase)admin/permisos-aprobacion">Permisos de aprobación</a>
+                            <a class="navbar-item" href="@(pathBase)admin/roles">Roles</a>
+                            <a class="navbar-item" href="@(pathBase)admin/permisos-rol">Permisos por rol</a>
+                            <a class="navbar-item" href="@(pathBase)admin/usuarios">Usuarios</a>
+                            @if (UserService.CanSeeLogs)
+                            {
+                                <a class="navbar-item" href="@(pathBase)logs">Logs</a>
+                            }
+                            @if (UserService.CanSeeDataMenu)
+                            {
+                                <a class="navbar-item" href="@(pathBase)admin/maestro-datos">Maestro de datos</a>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="navbar-end">
+                <div class="navbar-item" style="font-size: 0.85rem; color: var(--kpmg-grey-2);">
+                    @{
+                        var rawName = HttpContextAccessor.HttpContext?.User?.Identity?.Name;
+                        var isAuth = HttpContextAccessor.HttpContext?.User?.Identity?.IsAuthenticated == true;
+                    }
+                    Conectado como: <strong>@(rawName ?? (isAuth ? "(sin nombre)" : "No autenticado"))</strong>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <div class="colorborder">
+            <div class="kpmgblue"></div>
+            <div class="lightblue"></div>
+            <div class="lightpurple"></div>
+            <div class="greenkpmg"></div>
+    </div>
+</div>
+
+@code {
+    private async Task ToggleNavbar()
+    {
+        try { await JSRuntime.InvokeVoidAsync("eval", "window.IITSToggleNavbar && window.IITSToggleNavbar('navbarBasicExample');"); } catch { }
+    }
+}

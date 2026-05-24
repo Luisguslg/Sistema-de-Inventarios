@@ -1,0 +1,126 @@
+@page "/admin/roles"
+@inject IITS.Services.IRolService RolService
+@inject IITS.Services.ToastService Toast
+
+<PageTitle>Roles</PageTitle>
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Roles</h1>
+        <p class="has-text-grey">CRUD de roles para usuarios y permisos.</p>
+        <div class="buttons mt-4">
+            <button class="button is-primary" @onclick="AbrirNuevo">Nuevo rol</button>
+            <a href="@(PathBase.TrimEnd('/'))/api/export/Roles/xlsx" class="button is-light" target="_blank" download>Excel</a>
+            <a href="@(PathBase.TrimEnd('/'))/api/export/Roles/pdf" class="button is-light" target="_blank" download>PDF</a>
+        </div>
+        @if (loading) { <p>Cargando...</p> }
+        else
+        {
+            <table class="table is-fullwidth is-striped mt-4">
+                <thead><tr><th>Nombre</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in roles)
+                    {
+                        <tr>
+                            <td>@r.Nombre</td>
+                            <td>
+                                <button class="button is-small is-info is-light" @onclick="() => AbrirEditar(r)">Editar</button>
+                                <button class="button is-small is-danger is-light" @onclick="() => Eliminar(r.Id)">Eliminar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!roles.Any()) { <p class="has-text-grey">No hay roles. Cree uno.</p> }
+        }
+    </div>
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModal"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">@(editingId == null ? "Nuevo rol" : "Editar rol")</p>
+                <button class="delete" @onclick="CerrarModal"></button>
+            </header>
+            <section class="modal-card-body">
+                <EditForm Model="formModel" OnValidSubmit="Guardar" id="form-rol">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="notification is-danger is-light" />
+                    <div class="field">
+                        <label class="label">Nombre del rol <span class="has-text-danger">*</span></label>
+                        <div class="control">
+                            <InputText class="input" @bind-Value="formModel.Nombre" placeholder="Ej. Administrador" maxlength="50" />
+                        </div>
+                    </div>
+                </EditForm>
+            </section>
+            <footer class="modal-card-foot">
+                <button type="submit" form="form-rol" class="button is-primary">Guardar</button>
+                <button type="button" class="button" @onclick="CerrarModal">Cancelar</button>
+            </footer>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private List<IITS.Entities.Role> roles = new();
+    private bool loading = true;
+    private bool mostrarModal = false;
+    private Guid? editingId = null;
+    private FormRolModel formModel = new();
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        roles = await RolService.GetAllAsync();
+        loading = false;
+    }
+
+    private void AbrirNuevo()
+    {
+        editingId = null;
+        formModel = new FormRolModel();
+        mostrarModal = true;
+    }
+
+    private void AbrirEditar(IITS.Entities.Role r)
+    {
+        editingId = r.Id;
+        formModel = new FormRolModel { Nombre = r.Nombre ?? "" };
+        mostrarModal = true;
+    }
+
+    private void CerrarModal() => mostrarModal = false;
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(formModel.Nombre)) { Toast.ShowToast("Nombre requerido", IITS.Services.ToastLevel.Warning); return; }
+        try
+        {
+            if (editingId == null)
+                await RolService.CreateAsync(formModel.Nombre.Trim());
+            else
+            {
+                var r = await RolService.GetByIdAsync(editingId.Value);
+                if (r != null) { r.Nombre = formModel.Nombre.Trim(); await RolService.UpdateAsync(r); }
+            }
+            CerrarModal();
+            await Cargar();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowToast(ex.Message, IITS.Services.ToastLevel.Warning);
+        }
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        await RolService.DeleteAsync(id);
+        await Cargar();
+    }
+}

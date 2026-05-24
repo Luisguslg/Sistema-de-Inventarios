@@ -1,0 +1,159 @@
+@page "/admin/permisos-aprobacion"
+@inject IITS.Services.IAprobacionPermisoService PermisoService
+@inject IITS.Services.IUsuarioService UsuarioService
+@inject IITS.Services.ToastService Toast
+
+<PageTitle>Permisos de aprobación</PageTitle>
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Permisos de aprobación</h1>
+        <p class="has-text-grey">Define qué usuarios pueden aprobar cambios en cada módulo. Un usuario puede tener permiso en uno o varios módulos.</p>
+        <div class="buttons mt-4">
+            <button class="button is-primary" @onclick="AbrirAgregar">Agregar permiso</button>
+            <a href="@(PathBase.TrimEnd('/'))/api/export/PermisosAprobacion/xlsx" class="button is-light" target="_blank" download>Excel</a>
+            <a href="@(PathBase.TrimEnd('/'))/api/export/PermisosAprobacion/pdf" class="button is-light" target="_blank" download>PDF</a>
+        </div>
+        @if (loading) { <p>Cargando...</p> }
+        else
+        {
+            <div class="table-container mt-4">
+                <table class="table is-fullwidth is-striped">
+                    <thead>
+                        <tr>
+                            <th>Usuario</th>
+                            <th>Nombre</th>
+                            <th>Módulo</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in permisos)
+                        {
+                            <tr>
+                                <td>@(p.User?.Username ?? "-")</td>
+                                <td>@(p.User != null ? $"{p.User.Nombre} {p.User.Apellido}".Trim() : "-")</td>
+                                <td>@NombreModulo(p.Modulo)</td>
+                                <td>
+                                    <button class="button is-small is-danger is-light" @onclick="() => Eliminar(p.Id)">Quitar</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (!permisos.Any()) { <p class="has-text-grey">No hay permisos configurados. Los administradores pueden aprobar en todos los módulos.</p> }
+        }
+    </div>
+</div>
+
+@if (mostrarModal)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModal"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">Agregar permiso de aprobación</p>
+                <button class="delete" @onclick="CerrarModal"></button>
+            </header>
+            <section class="modal-card-body">
+                <div class="field">
+                    <label class="label">Usuario <span class="has-text-danger">*</span></label>
+                    <div class="control">
+                        <select class="select-clean" @bind="formUserId">
+                            <option value="">-- Seleccione --</option>
+                            @foreach (var u in usuarios)
+                            {
+                                <option value="@u.Id">@u.Username - @(u.Nombre) @(u.Apellido)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">Módulo <span class="has-text-danger">*</span></label>
+                    <div class="control">
+                        <select class="select-clean" @bind="formModulo">
+                            <option value="">-- Seleccione --</option>
+                            @foreach (var m in PermisoService.GetModulosDisponibles())
+                            {
+                                <option value="@m">@NombreModulo(m)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(errorMsg)) { <p class="has-text-danger">@errorMsg</p> }
+            </section>
+            <footer class="modal-card-foot">
+                <button class="button is-primary" @onclick="Guardar">Guardar</button>
+                <button class="button" @onclick="CerrarModal">Cancelar</button>
+            </footer>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private List<IITS.Entities.AprobacionPermiso> permisos = new();
+    private List<IITS.Entities.User> usuarios = new();
+    private bool loading = true;
+    private bool mostrarModal = false;
+    private string formUserId = "";
+    private string formModulo = "";
+    private string errorMsg = "";
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        permisos = await PermisoService.GetAllAsync();
+        usuarios = await UsuarioService.GetAllWithRolesAsync();
+        loading = false;
+    }
+
+    private static string NombreModulo(string modulo) => modulo switch
+    {
+        "Aplicaciones" => "Aplicaciones",
+        "Operaciones" => "Tecnología",
+        "Cuentas" => "Cuentas",
+        _ => modulo
+    };
+
+    private void AbrirAgregar()
+    {
+        formUserId = usuarios.FirstOrDefault()?.Id.ToString() ?? "";
+        formModulo = "";
+        errorMsg = "";
+        mostrarModal = true;
+    }
+
+    private void CerrarModal() => mostrarModal = false;
+
+    private async Task Guardar()
+    {
+        errorMsg = "";
+        if (!Guid.TryParse(formUserId, out var uid)) { errorMsg = "Seleccione un usuario."; return; }
+        if (string.IsNullOrWhiteSpace(formModulo)) { errorMsg = "Seleccione un módulo."; return; }
+        try
+        {
+            await PermisoService.CreateAsync(uid, formModulo);
+            Toast.ShowToast("Permiso agregado.", IITS.Services.ToastLevel.Success);
+            CerrarModal();
+            await Cargar();
+        }
+        catch (InvalidOperationException ex)
+        {
+            errorMsg = ex.Message;
+        }
+        catch (ArgumentException ex)
+        {
+            errorMsg = ex.Message;
+        }
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        await PermisoService.DeleteAsync(id);
+        Toast.ShowToast("Permiso quitado.", IITS.Services.ToastLevel.Success);
+        await Cargar();
+    }
+}

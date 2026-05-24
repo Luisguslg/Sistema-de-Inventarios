@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build (no warnings as errors in CI, but fail on errors)
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests (si existen proyectos de prueba)
+        run: |
+          if find . -name "*.Tests.csproj" -o -name "*Tests*.csproj" | grep -q .; then
+            dotnet test --no-build --configuration Release --verbosity normal
+          else
+            echo "No test projects found — skipping test run."
+          fi
+
+      - name: Publish (smoke check)
+        run: dotnet publish IITS/IITS.csproj --no-build --configuration Release --output ./publish

@@ -5,12 +5,7 @@ using Microsoft.AspNetCore.Authentication.Negotiate;
 
 namespace IITS.Middleware;
 
-/// <summary>
-/// 1) Si no hay usuario (cookie expirada o primera visita), intenta autenticar con Negotiate (Windows).
-/// 2) Si hay usuario por Negotiate o DevAuth pero no por Cookie, firma con Cookie para limitar la duración de la sesión (Auth:SessionTimeoutMinutes).
-/// Guarda solo el username en la cookie (no todos los claims) para evitar HTTP 400 "Request Too Long" por headers excesivos.
-/// IITSClaimsTransformation añade roles y permisos desde la BD en cada petición.
-/// </summary>
+/// <summary>Emite cookie de sesión con timeout configurable tras autenticación Windows/Dev. CWE-613, CWE-1004.</summary>
 public class SessionCookieSignInMiddleware
 {
     private readonly RequestDelegate _next;

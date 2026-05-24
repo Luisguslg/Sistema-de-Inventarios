@@ -1,0 +1,44 @@
+@* Botón Exportar: Excel y PDF en línea. Cierra al hacer clic fuera. *@
+<div class="exportar-dropdown-wrapper">
+    @if (isActive)
+    {
+        <div class="dropdown-backdrop" @onclick="Cerrar"></div>
+    }
+    <div class="dropdown @(isActive ? "is-active" : "")" style="position: relative; z-index: 1001;">
+        <div class="dropdown-trigger">
+            <button class="button is-light" type="button" @onclick="Toggle" aria-haspopup="true" aria-controls="dropdown-@Id">
+                Exportar
+            </button>
+        </div>
+        <div class="dropdown-menu" id="dropdown-@Id" role="menu">
+            <div class="dropdown-content dropdown-content-linear">
+                <a class="dropdown-item" href="@UrlExport("xlsx")" target="_blank" download>Excel</a>
+                <a class="dropdown-item" href="@UrlExport("pdf")" target="_blank" download>PDF</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Modulo { get; set; } = "";
+    [Parameter] public string PathBase { get; set; } = "/";
+    [Parameter] public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+    [Parameter] public string? Area { get; set; }
+    [Parameter] public string? Tipo { get; set; }
+    [Parameter] public string? Estatus { get; set; }
+
+    private bool isActive;
+
+    private string UrlExport(string formato)
+    {
+        var baseUrl = $"{PathBase.TrimEnd('/')}/api/export/{Modulo}/{formato}";
+        var q = new List<string>();
+        if (!string.IsNullOrWhiteSpace(Area)) q.Add($"area={Uri.EscapeDataString(Area)}");
+        if (!string.IsNullOrWhiteSpace(Tipo)) q.Add($"tipo={Uri.EscapeDataString(Tipo)}");
+        if (!string.IsNullOrWhiteSpace(Estatus)) q.Add($"estatus={Uri.EscapeDataString(Estatus)}");
+        return q.Count > 0 ? $"{baseUrl}?{string.Join("&", q)}" : baseUrl;
+    }
+
+    private void Toggle() => isActive = !isActive;
+    private void Cerrar() => isActive = false;
+}

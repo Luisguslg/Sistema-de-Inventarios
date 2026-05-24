@@ -1,0 +1,89 @@
+@page "/logs"
+@inject IITS.Services.IAuditLogService AuditLogService
+
+<PageTitle>Logs de auditoría</PageTitle>
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Logs de auditoría</h1>
+        <p class="has-text-grey">Registro de acciones (crear, actualizar, eliminar) por módulo.</p>
+        <div class="field is-horizontal mt-4">
+            <div class="field-label is-normal">
+                <label class="label">Filtrar por tabla</label>
+            </div>
+            <div class="field-body">
+                <div class="field is-narrow">
+                    <div class="control">
+                        <select class="select-clean" @bind="filtroTabla" @bind:after="Cargar">
+                            <option value="">Todas</option>
+                            <option value="Aplicaciones">Aplicaciones</option>
+                            <option value="Operaciones">Operaciones</option>
+                            <option value="CuentasPrivilegiadas">Cuentas privilegiadas</option>
+                            <option value="CuentasServicio">Cuentas servicio</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field is-grouped">
+                    <div class="control">
+                        <a href="@(GetExportUrl("xlsx"))" class="button is-light is-small" target="_blank" download>Excel</a>
+                        <a href="@(GetExportUrl("pdf"))" class="button is-light is-small" target="_blank" download>PDF</a>
+                        <a href="@(GetExportUrl("csv"))" class="button is-light is-small" target="_blank" download>CSV</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @if (loading) { <p>Cargando...</p> }
+        else
+        {
+            <div class="table-container">
+            <table class="table is-fullwidth is-striped mt-4">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Usuario</th>
+                        <th>Tabla</th>
+                        <th>Acción</th>
+                        <th>Detalle</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in logs)
+                    {
+                        <tr>
+                            <td>@log.Fecha.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@(log.UsuarioNombre ?? "-")</td>
+                            <td>@log.Tabla</td>
+                            <td>@log.Accion</td>
+                            <td>@(log.Detalle ?? "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!logs.Any()) { <p class="has-text-grey">No hay registros.</p> }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private List<AuditLogEntry> logs = new();
+    private string filtroTabla = "";
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        logs = await AuditLogService.GetLogsAsync(string.IsNullOrWhiteSpace(filtroTabla) ? null : filtroTabla);
+        loading = false;
+    }
+
+    private string GetExportUrl(string formato)
+    {
+        var baseUrl = $"{PathBase.TrimEnd('/')}/api/export/Logs/{formato}";
+        if (!string.IsNullOrWhiteSpace(filtroTabla))
+            return baseUrl + "?tabla=" + Uri.EscapeDataString(filtroTabla);
+        return baseUrl;
+    }
+}

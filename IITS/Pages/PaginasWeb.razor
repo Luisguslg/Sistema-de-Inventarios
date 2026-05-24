@@ -1,0 +1,81 @@
+@page "/paginas-web"
+@inject IITS.Data.AppDbContext Db
+@inject IITS.Services.ToastService Toast
+
+<PageTitle>Páginas Web</PageTitle>
+<div class="container">
+    <div class="box">
+        <h1 class="Page-title">Páginas Web</h1>
+        <div class="buttons mt-4">
+            <button class="button is-primary" @onclick="AbrirNuevo">Nueva</button>
+            <a href="@(PathBase)api/export/PaginasWeb/xlsx" class="button is-light" target="_blank" download>Excel</a>
+            <a href="@(PathBase)api/export/PaginasWeb/pdf" class="button is-light" target="_blank" download>PDF</a>
+            <a href="@(PathBase)api/export/PaginasWeb/csv" class="button is-light" target="_blank" download>CSV</a>
+        </div>
+        @if (loading) { <p>Cargando...</p> }
+        else
+        {
+            <table class="table is-fullwidth is-striped mt-4">
+                <thead><tr><th>Nombre</th><th>URL</th><th>Estatus</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var item in items)
+                    {
+                        <tr>
+                            <td>@item.Nombre</td>
+                            <td>@item.Url</td>
+                            <td>@(estatusDict.GetValueOrDefault(item.EstatusId)?.Nombre ?? "-")</td>
+                            <td><button class="button is-small is-light" @onclick="() => Eliminar(item.Id)">Eliminar</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!items.Any()) { <p class="has-text-grey">No hay registros.</p> }
+        }
+    </div>
+</div>
+@if (mostrarModal)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModal"></div>
+        <div class="modal-card">
+            <header class="modal-card-head"><p class="modal-card-title">Nueva página web</p><button class="delete" @onclick="CerrarModal"></button></header>
+            <section class="modal-card-body">
+                <div class="field"><label class="label">Nombre</label><div class="control"><input class="input" @bind="formNombre" /></div></div>
+                <div class="field"><label class="label">URL</label><div class="control"><input class="input" @bind="formUrl" /></div></div>
+                <div class="field"><label class="label">Estatus</label><div class="control"><select class="select-clean" @bind="formEstatusIdStr">@foreach (var e in estatusList) { <option value="@e.Id">@e.Nombre</option> }</select></div></div>
+            </section>
+            <footer class="modal-card-foot"><button class="button is-primary" @onclick="Guardar">Guardar</button><button class="button" @onclick="CerrarModal">Cancelar</button></footer>
+        </div>
+    </div>
+}
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private List<IITS.Entities.PaginaWeb> items = new();
+    private List<IITS.Entities.Estatus> estatusList = new();
+    private Dictionary<Guid, IITS.Entities.Estatus> estatusDict = new();
+    private bool loading = true;
+    private bool mostrarModal = false;
+    private string formNombre = "";
+    private string formUrl = "";
+    private string formEstatusIdStr = "";
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+    private async Task Cargar()
+    {
+        loading = true;
+        estatusList = await Db.Estatus.AsNoTracking().OrderBy(e => e.Codigo).ToListAsync();
+        estatusDict = estatusList.ToDictionary(e => e.Id);
+        items = await Db.PaginasWeb.AsNoTracking().OrderBy(x => x.Nombre).ToListAsync();
+        loading = false;
+    }
+    private void AbrirNuevo() { formNombre = ""; formUrl = ""; formEstatusIdStr = estatusList.FirstOrDefault(e => e.Codigo == 1000)?.Id.ToString() ?? ""; mostrarModal = true; }
+    private void CerrarModal() => mostrarModal = false;
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(formNombre)) { Toast.ShowToast("Nombre requerido", IITS.Services.ToastLevel.Warning); return; }
+        if (!Guid.TryParse(formEstatusIdStr, out var eid)) return;
+        Db.PaginasWeb.Add(new IITS.Entities.PaginaWeb { Id = Guid.NewGuid(), Nombre = formNombre.Trim(), Url = formUrl?.Trim() ?? "", EstatusId = eid, CreatedAt = DateTime.UtcNow });
+        await Db.SaveChangesAsync(); CerrarModal(); await Cargar();
+    }
+    private async Task Eliminar(Guid id) { var e = await Db.PaginasWeb.FindAsync(id); if (e != null) { Db.PaginasWeb.Remove(e); await Db.SaveChangesAsync(); await Cargar(); } }
+}

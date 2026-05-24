@@ -1,0 +1,59 @@
+DIAGNÓSTICO Y PLAN INCREMENTAL - IITS Inventarios
+================================================
+
+ESTADO ACTUAL
+-------------
+- Stack: ASP.NET Core 8, Blazor Server, EF Core 8, SQL Server.
+- Auth: Negotiate (Windows) + IITSClaimsTransformation que busca User en BD por identity.Name (DOMINIO\user).
+- Sin AuthMode Dev: en local sin dominio la app no autentica; no hay fallback.
+- Sin email: no existe IEmailSender ni envío de correos (aprobaciones no notifican).
+- Export: IExportService con PDF (QuestPDF), Excel (ClosedXML), CSV; endpoint /api/export/{modulo}/{formato}; módulos Aplicaciones, Logs, Operaciones, Telecomunicaciones, PaginasWeb, Proveedores, Cuentas, Aprobaciones.
+- Logging: IAuditLogService (AuditLogs en BD); sin Serilog/CorrelationId aún.
+- Aprobaciones: tabla Aprobaciones (registro de estado); AprobacionPermiso por usuario/módulo; no hay flujo ApprovalRequest/ApprovalDecision ni email.
+- BD: migraciones EF existentes; Program.cs tenía SQL raw (EnsureAprobacionPermisosTableAsync, EnsureCatalogosFormularioTablesAsync) duplicando migraciones -> eliminado, solo MigrateAsync.
+- Estatus: seed Activo, Desincorporado; falta "Inactivo" (requisito: Activo, Inactivo, Desincorporado).
+- User: sin provisionamiento automático desde AD; si no existe en BD, no hay claims (no se crea usuario al primer login).
+- SuperAdmin: no hay rol ni seed por config; IsAdmin por rol "Administrador" o config.
+
+GAPS VS REQUISITOS
+------------------
+1. Auth: DevAuth en local (emular usuario cuando AuthMode=Dev); Windows en IIS; provisionar usuario en BD al primer login; SuperAdmin por config + seed.
+2. RBAC: solo roles; falta catálogo de Permisos y policy-based por permiso (VIEW/CREATE/EDIT/APPROVE/EXPORT por módulo).
+3. Aprobaciones: flujo Request -> Decision, notificación email a aprobadores y al solicitante; EmailOutbox + envío en background.
+4. BD: normalizar según Campos.xlsx (Asset, ManagedAccount, catálogos Area/Office/Status/Environment/Criticality/Category/Vendor/DeviceModel; ApprovalRequest/ApprovalDecision; AuditEvent; EmailOutbox). Estatus: agregar Inactivo.
+5. Export: ya en listados; nombre de archivo con hora (yyyyMMdd_HHmm) y filtros opcionales.
+6. UX/UI: formularios y tablas a mejorar; componentes reusables; inline create para catálogos.
+7. Logs: Serilog + CorrelationId; módulo Logs con export PDF/CSV/Excel.
+
+PLAN POR ETAPAS (SIN REESCRITURA MASIVA)
+----------------------------------------
+Etapa 1: Auth + SuperAdmin + seed
+  - AuthMode (Dev | Windows) en appsettings; DevAuth con usuario/cookie emulado en Development.
+  - EnsureUserProvisioned: crear User en BD desde identity (Windows) o desde config (Dev).
+  - Seed: SuperAdmin por config (SuperAdminUsername); rol SuperAdmin + permiso *; idempotente.
+
+Etapa 2: RBAC permisos
+  - Permission, RolePermission; policies por permiso; UI roles/permisos.
+
+Etapa 3: Approval + AuditEvent + EmailOutbox
+  - ApprovalRequest, ApprovalDecision; IEmailSender + EmailOutbox; HostedService o cola.
+
+Etapa 4: Normalización BD (Asset, ManagedAccount según Campos.xlsx)
+  - Catálogos y entidades; migraciones; refactor formularios.
+
+Etapa 5: Export en todas las pantallas con nombre lógico (yyyyMMdd_HHmm).
+
+Etapa 6: UI overhaul + Dashboard.
+
+DEFINITION OF DONE POR ETAPA
+----------------------------
+- Migraciones EF si aplica; compila; flujo probado en consola; sin SQL raw para esquema.
+
+ETAPA 1 HECHA (Auth + SuperAdmin + seed)
+---------------------------------------
+- Auth:Mode en appsettings (Windows | Dev). En Development con Mode=Dev, DevAuthMiddleware inyecta identity con Auth:DevUsername cuando no hay usuario Windows.
+- appsettings.Development.json: Auth.DevUsername y Auth.SuperAdminUsername (ej. dev.local).
+- DbSeed: EnsureEstatusAsync idempotente (Activo, Inactivo, Desincorporado); EnsureRolesAsync incluye SuperAdmin; EnsureSuperAdminUserAsync crea usuario y asigna rol SuperAdmin por config.
+- CurrentUserService: SuperAdmin tiene IsAdmin, CanSeeDataMenu, CanSeeLogs, CanEdit.
+- Program: SQL raw de tablas eliminado; solo MigrateAsync; SyncMigrationHistory incluye CatalogosFormulario; EnsureSuperAdminUserAsync en arranque y en reset-migrations.
+- Compila y arranca; en Dev con Mode=Dev el usuario dev.local queda autenticado y con rol SuperAdmin.

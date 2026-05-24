@@ -1,0 +1,772 @@
+@page "/operaciones"
+@inject IITS.Data.AppDbContext Db
+@inject IITS.Services.ToastService Toast
+@inject IITS.Services.IAprobacionService AprobacionService
+@inject IITS.Services.ICurrentUserService UserService
+@inject IITS.Services.IEmailOutboxService EmailOutboxService
+@inject IITS.Services.IAprobacionPermisoService AprobacionPermisoService
+@inject IITS.Services.IAuditLogService AuditLogService
+@inject IConfiguration Config
+
+<PageTitle>Tecnología</PageTitle>
+<div class="container container-inventario">
+    <div class="box">
+        <h1 class="Page-title">Tecnología</h1>
+        <div class="filtros-acciones-row mt-4">
+            @if (areasList.Any())
+            {
+                <div class="field mb-0">
+                    <label class="label">Área</label>
+                    <div class="control">
+                        <select class="select-clean" @bind="filtroArea">
+                            <option value="">Todas</option>
+                            @foreach (var a in areasList) { <option value="@a.Name">@a.Name</option> }
+                        </select>
+                    </div>
+                </div>
+            }
+            <div class="field mb-0">
+                <label class="label">Estatus</label>
+                <div class="control">
+                    <select class="select-clean" @bind="filtroEstatus">
+                        <option value="">Todos</option>
+                        <option value="Activo">Activo</option>
+                        <option value="Inactivo">Inactivo</option>
+                        <option value="Desincorporado">Desincorporado</option>
+                    </select>
+                </div>
+            </div>
+            <div class="buttons mb-0">
+                <button class="button is-primary" @onclick="AbrirNuevo">Nuevo</button>
+                <IITS.Shared.ExportarDropdown Modulo="Operaciones" PathBase="@PathBase" Area="@filtroArea" Estatus="@filtroEstatus" />
+            </div>
+        </div>
+        @if (loading) { <p>Cargando...</p> }
+        else
+        {
+            <div class="table-container table-container-fit mt-4">
+                <table class="table is-fullwidth is-striped table-inventario">
+                    <thead>
+                        <tr>
+                            <th class="col-hostname">Hostname</th>
+                            <th class="col-corto">Serial</th>
+                            <th class="col-corto">Est.</th>
+                            <th class="col-medio">Oficina</th>
+                            <th class="col-medio">Área</th>
+                            <th class="col-medio">Aloj.</th>
+                            <th class="col-corto">Tipo</th>
+                            <th class="col-medio">Función/Uso</th>
+                            <th class="col-medio">IP</th>
+                            <th class="col-corto">SO</th>
+                            <th class="col-acciones"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in itemsFiltrados)
+                        {
+                            <tr>
+                                <td class="col-hostname" title="@Na(item.Hostname)">@Na(item.Hostname)</td>
+                                <td class="col-corto" title="@Na(item.Serial)">@Na(item.Serial)</td>
+                                <td class="col-corto">@Na(item.EstatusNombre)</td>
+                                <td class="col-medio" title="@Na(item.OfficeName)">@Na(item.OfficeName)</td>
+                                <td class="col-medio" title="@Na(item.AreaName)">@Na(item.AreaName)</td>
+                                <td class="col-medio" title="@Na(item.AlojamientoName)">@Na(item.AlojamientoName)</td>
+                                <td class="col-corto" title="@Na(item.TipoDispositivo)">@Na(item.TipoDispositivo)</td>
+                                <td class="col-medio" title="@Na(item.Funcion)">@Na(item.Funcion)</td>
+                                <td class="col-medio" title="@Na(item.IP)">@Na(item.IP)</td>
+                                <td class="col-corto" title="@Na(item.SistemaOperativo)">@Na(item.SistemaOperativo)</td>
+                                <td class="actions-cell col-acciones">
+                                        <div class="buttons" style="gap: 0.35rem;">
+                                            @if (idsPorAprobar.Contains(item.Id))
+                                            {
+                                                <span class="tag is-warning" title="Hay una modificación pendiente de aprobación.">Aprobación pendiente</span>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="button is-small is-info is-light" @onclick="() => AbrirEditar(item.Id)">Editar</button>
+                                                <button type="button" class="button is-small is-light" @onclick="() => Eliminar(item.Id)">Eliminar</button>
+                                            }
+                                        </div>
+                                    </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (!itemsFiltrados.Any()) { <p class="has-text-grey">No hay registros.</p> }
+        }
+    </div>
+</div>
+
+@* Modal principal: Nueva operación *@
+@if (mostrarModal)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModal"></div>
+        <div class="modal-card" style="max-width: 720px;">
+            <header class="modal-card-head"><p class="modal-card-title">@(editingId == null ? "Nueva tecnología" : "Editar tecnología")</p><button class="delete" @onclick="CerrarModal"></button></header>
+            <section class="modal-card-body" style="max-height: 75vh; overflow-y: auto;">
+                <div class="columns is-multiline">
+                    <div class="column is-half"><div class="field"><label class="label">Hostname *</label><div class="control"><input class="input" @bind="formHostname" placeholder="Nombre del equipo" /></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">Estatus *</label><div class="control"><select class="select-clean" @bind="formEstatusIdStr">@foreach (var e in estatusList) { <option value="@e.Id">@e.Nombre</option> }</select></div></div></div>
+                </div>
+                <hr class="my-3" />
+                <p class="has-text-weight-semibold mb-2">Ubicación</p>
+                <div class="columns is-multiline">
+                    <div class="column is-half"><div class="field"><label class="label">Oficina *</label><div class="control"><select class="select-clean" @bind="formOfficeIdStr"><option value="">—</option>@foreach (var o in officesList) { <option value="@o.Id">@o.Name</option> }</select></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">Área responsable *</label><div class="control is-flex is-align-items-center gap-1"><select class="select-clean" @bind="formAreaIdStr" style="flex:1;"><option value="">—</option>@foreach (var a in areasList) { <option value="@a.Id">@a.Name</option> }</select><button type="button" class="button is-small is-light" @onclick="AbrirAgregarArea" title="Agregar área">+</button></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">Entorno de operación *</label><div class="control"><select class="select-clean" @bind="formAlojamientoIdStr"><option value="">—</option>@foreach (var a in alojamientosList) { <option value="@a.Id">@a.Nombre</option> }</select></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">Propietario *</label><div class="control"><select class="select-clean" @bind="formPropietario" style="flex:1;"><option value="">—</option><option value="Auditoría">Auditoría</option><option value="Impuesto y Legal">Impuesto y Legal</option><option value="Asesoría">Asesoría</option><option value="Infraestructura">Infraestructura</option><option value="Todas">Todas</option></select></div></div></div>
+                </div>
+                <hr class="my-3" />
+                <p class="has-text-weight-semibold mb-2">Clasificación</p>
+                <div class="columns is-multiline">
+                    <div class="column is-half"><div class="field"><label class="label">Ambiente *</label><div class="control"><select class="select-clean" @bind="formEnvironmentIdStr"><option value="">—</option>@foreach (var e in environmentsList) { <option value="@e.Id">@e.Name</option> }</select></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">Criticidad *</label><div class="control"><select class="select-clean" @bind="formCriticalityIdStr"><option value="">—</option>@foreach (var c in criticalitiesList) { <option value="@c.Id">@c.Name</option> }</select></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">Categoría *</label><div class="control"><select class="select-clean" @bind="formCategoryIdStr"><option value="">—</option>@foreach (var c in categoriesList) { <option value="@c.Id">@c.Name</option> }</select></div></div></div>
+                </div>
+                <hr class="my-3" />
+                <p class="has-text-weight-semibold mb-2">Dispositivo</p>
+                <div class="columns is-multiline">
+                    <div class="column is-half">
+                        <div class="field"><label class="label">Dispositivo *</label><div class="control is-flex is-align-items-center gap-1">
+                            <select class="select-clean" @bind="formTipoDispositivo" style="flex:1;"><option value="">—</option>@foreach (var x in tipoDispositivoList) { <option value="@x.Name">@x.Name</option> }</select>
+                            <button type="button" class="button is-small is-light" @onclick="AgregarTipoDispositivo" title="Agregar en el acto">+</button>
+                        </div></div>
+                    </div>
+                    <div class="column is-half">
+                        <div class="field"><label class="label">Tipo de infraestructura *</label><div class="control">
+                            <select class="select-clean" @bind="formTipoInfraestructura"><option value="">—</option>@foreach (var x in tipoInfraestructuraList) { <option value="@x.Name">@x.Name</option> }</select>
+                        </div></div>
+                    </div>
+                    @if (EsFisico)
+                    {
+                        <div class="column is-half"><div class="field"><label class="label">Serial *</label><div class="control"><input class="input" @bind="formSerial" placeholder="Obligatorio cuando el dispositivo es físico" /></div></div></div>
+                        <div class="column is-half">
+                            <div class="field"><label class="label">Fabricante</label><div class="control is-flex is-align-items-center gap-1">
+                                <select class="select-clean" @bind="formManufacturerIdStr" @bind:after="OnFabricanteCambio" style="flex:1;"><option value="">—</option>@foreach (var v in vendorsList) { <option value="@v.Id">@v.Name</option> }</select>
+                                <button type="button" class="button is-small is-light" @onclick="AbrirAgregarFabricante" title="Agregar fabricante">+</button>
+                            </div></div>
+                        </div>
+                        <div class="column is-half">
+                            <div class="field"><label class="label">Modelo</label><div class="control is-flex is-align-items-center gap-1">
+                                <select class="select-clean" @bind="formDeviceModelIdStr" style="flex:1;"><option value="">—</option>@foreach (var d in ModelosParaFabricanteSeleccionado) { <option value="@d.Id">@d.Name</option> }</select>
+                                <button type="button" class="button is-small is-light" @onclick="AbrirAgregarModelo" title="Agregar modelo">+</button>
+                            </div></div>
+                        </div>
+                    }
+                    <div class="column is-half">
+                        <div class="field"><label class="label">Función/Uso *</label><div class="control is-flex is-align-items-center gap-1">
+                            <select class="select-clean" @bind="formFuncion" style="flex:1;"><option value="">—</option>@foreach (var x in funcionList) { <option value="@x.Name">@x.Name</option> }</select>
+                            <button type="button" class="button is-small is-light" @onclick="AgregarFuncion">+</button>
+                        </div></div>
+                    </div>
+                    @if (EsVirtual)
+                    {
+                        <div class="column is-half"><div class="field"><label class="label">Host *</label><div class="control"><select class="select-clean" @bind="formHost"><option value="">—</option>@foreach (var h in hostsFisicosList) { <option value="@h">@h</option> }</select></div></div></div>
+                    }
+                </div>
+                <hr class="my-3" />
+                <p class="has-text-weight-semibold mb-2">Hardware / capacidad</p>
+                <div class="columns is-multiline">
+                    <div class="column is-half"><div class="field"><label class="label">RAM *</label><div class="control"><input class="input" @bind="formRAM" placeholder="Ej. 64 GB" /></div></div></div>
+                    <div class="column is-one-quarter"><div class="field"><label class="label">Cant. CPU/VP *</label><div class="control"><input class="input" type="number" min="0" @bind="formCantidadCPU" placeholder="2" /></div></div></div>
+                    <div class="column is-one-quarter"><div class="field"><label class="label">Velocidad CPU *</label><div class="control"><input class="input" @bind="formVelocidadCPU" placeholder="2.4 GHz" /></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">Capacidad DAS *</label><div class="control"><input class="input" @bind="formCapacidadDAS" placeholder="Ej. 2 TB" /></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">Capacidad SAN</label><div class="control"><input class="input" @bind="formCapacidadSAN" placeholder="Ej. 10 TB" /></div></div></div>
+                </div>
+                <hr class="my-3" />
+                <p class="has-text-weight-semibold mb-2">Software y red</p>
+                <div class="columns is-multiline">
+                    <div class="column is-half">
+                        <div class="field"><label class="label">Sistema operativo *</label><div class="control is-flex is-align-items-center gap-1">
+                            <select class="select-clean" @bind="formSistemaOperativo" style="flex:1;"><option value="">—</option>@foreach (var x in sistemaOperativoList) { <option value="@x.Name">@x.Name</option> }</select>
+                            <button type="button" class="button is-small is-light" @onclick="AgregarSistemaOperativo">+</button>
+                        </div></div>
+                    </div>
+                    <div class="column is-half"><div class="field"><label class="label">Firmware</label><div class="control"><input class="input" @bind="formFirmware" /></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">IP</label><div class="control"><input class="input" @bind="formIP" placeholder="192.168.1.10" /></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">MAC</label><div class="control"><input class="input" @bind="formMAC" /></div></div></div>
+                </div>
+                <hr class="my-3" />
+                <div class="columns is-multiline">
+                    <div class="column is-half"><div class="field"><label class="label">Garantía expira</label><div class="control"><input class="input" type="date" @bind="formGarantiaExpira" /></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">BCP</label><div class="control"><select class="select-clean" @bind="formBcp"><option value="">—</option><option value="Sí">Sí</option><option value="No">No</option></select></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">RTO (Recovery Time Objective)</label><div class="control"><input class="input" type="text" @bind="formRTO" placeholder="Ej: ≤ 24 h" /></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">RPO (Recovery Point Objective)</label><div class="control"><input class="input" type="text" @bind="formRPO" placeholder="Ej: ≤ 4 h" /></div></div></div>
+                    <div class="column is-half"><div class="field"><label class="label">Clasificación de la información</label><div class="control"><select class="select-clean" @bind="formClasificacionInformacion"><option value="">—</option><option value="N/A">N/A</option><option value="Confidencial">Confidencial</option><option value="Interno">Interno</option><option value="Público">Público</option><option value="Restringido">Restringido</option><option value="KPMG interno">KPMG interno</option><option value="Otro">Otro</option></select></div></div></div>
+                    <div class="column is-full"><div class="field"><label class="label">Descripción</label><div class="control"><textarea class="textarea" @bind="formObservaciones" rows="2"></textarea></div></div></div>
+                </div>
+            </section>
+            <footer class="modal-card-foot"><button class="button is-primary" @onclick="Guardar">Guardar</button><button class="button" @onclick="CerrarModal">Cancelar</button></footer>
+        </div>
+    </div>
+}
+
+@* Mini-modal: Agregar valor al catálogo en el acto *@
+@if (!string.IsNullOrEmpty(addingCatalogKind))
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarAgregarCatalogo"></div>
+        <div class="modal-card" style="max-width: 360px;">
+            <header class="modal-card-head"><p class="modal-card-title">Agregar @(addingCatalogKind)</p><button class="delete" @onclick="CerrarAgregarCatalogo"></button></header>
+            <section class="modal-card-body">
+                <div class="field"><label class="label">Nombre</label><div class="control"><input class="input" @bind="newCatalogName" placeholder="Nuevo valor" @onkeydown="KeydownAgregarCatalogo" /></div></div>
+            </section>
+            <footer class="modal-card-foot"><button class="button is-primary" @onclick="GuardarAgregarCatalogo">Agregar</button><button class="button" @onclick="CerrarAgregarCatalogo">Cancelar</button></footer>
+        </div>
+    </div>
+}
+@* Mini-modal: Agregar fabricante *@
+@if (mostrarModalFabricante)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarAgregarFabricante"></div>
+        <div class="modal-card" style="max-width: 360px;">
+            <header class="modal-card-head"><p class="modal-card-title">Agregar fabricante</p><button class="delete" @onclick="CerrarAgregarFabricante"></button></header>
+            <section class="modal-card-body">
+                <div class="field"><label class="label">Nombre</label><div class="control"><input class="input" @bind="newFabricanteName" placeholder="Nombre del fabricante" /></div></div>
+            </section>
+            <footer class="modal-card-foot"><button class="button is-primary" @onclick="GuardarAgregarFabricante">Agregar</button><button class="button" @onclick="CerrarAgregarFabricante">Cancelar</button></footer>
+        </div>
+    </div>
+}
+@* Mini-modal: Agregar modelo *@
+@if (mostrarModalModelo)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarAgregarModelo"></div>
+        <div class="modal-card" style="max-width: 360px;">
+            <header class="modal-card-head"><p class="modal-card-title">Agregar modelo</p><button class="delete" @onclick="CerrarAgregarModelo"></button></header>
+            <section class="modal-card-body">
+                <div class="field"><label class="label">Fabricante</label><div class="control"><select class="select-clean" @bind="newModeloFabricanteIdStr"><option value="">—</option>@foreach (var v in vendorsList) { <option value="@v.Id">@v.Name</option> }</select></div></div>
+                <div class="field"><label class="label">Nombre del modelo</label><div class="control"><input class="input" @bind="newModeloName" placeholder="Nombre" /></div></div>
+            </section>
+            <footer class="modal-card-foot"><button class="button is-primary" @onclick="GuardarAgregarModelo">Agregar</button><button class="button" @onclick="CerrarAgregarModelo">Cancelar</button></footer>
+        </div>
+    </div>
+}
+@* Mini-modal: Agregar área (para Área responsable / Propietario) *@
+@if (mostrarModalAgregarArea)
+{
+    <div class="modal is-active">
+        <div class="modal-background" @onclick="CerrarModalAgregarArea"></div>
+        <div class="modal-card" style="max-width: 360px;">
+            <header class="modal-card-head"><p class="modal-card-title">Agregar área</p><button class="delete" @onclick="CerrarModalAgregarArea"></button></header>
+            <section class="modal-card-body">
+                <div class="field"><label class="label">Nombre del área</label><div class="control"><input class="input" @bind="nuevoAreaNombre" placeholder="Ej. Aplicaciones, Operaciones" /></div></div>
+            </section>
+            <footer class="modal-card-foot"><button class="button is-primary" @onclick="GuardarAgregarArea">Agregar</button><button class="button" @onclick="CerrarModalAgregarArea">Cancelar</button></footer>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "PathBase")] public string PathBase { get; set; } = "/";
+    private static string Na(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : s;
+    private List<OperacionRow> items = new();
+    private List<IITS.Entities.Estatus> estatusList = new();
+    private List<IITS.Entities.Office> officesList = new();
+    private List<IITS.Entities.Area> areasList = new();
+    private List<IITS.Entities.Alojamiento> alojamientosList = new();
+    private List<IITS.Entities.Environment> environmentsList = new();
+    private List<IITS.Entities.Criticality> criticalitiesList = new();
+    private List<IITS.Entities.Category> categoriesList = new();
+    private List<IITS.Entities.Vendor> vendorsList = new();
+    private List<IITS.Entities.DeviceModel> deviceModelsList = new();
+    private List<IITS.Entities.CatalogItem> tipoDispositivoList = new();
+    private List<IITS.Entities.CatalogItem> funcionList = new();
+    private List<IITS.Entities.CatalogItem> tipoInfraestructuraList = new();
+    private List<IITS.Entities.CatalogItem> sistemaOperativoList = new();
+    private HashSet<Guid> idsPorAprobar = new();
+    private bool loading = true;
+    private bool mostrarModal = false;
+    private Guid? editingId = null;
+    private bool catalogosDisponibles = false;
+    private string filtroArea = "";
+    private string filtroEstatus = "";
+    private string formHostname = "";
+    private string formSerial = "";
+    private string formEstatusIdStr = "";
+    private string formOfficeIdStr = "";
+    private string formAreaIdStr = "";
+    private string formAlojamientoIdStr = "";
+    private string formOwnerAreaIdStr = "";
+    private string formPropietario = "";
+    private string formBcp = "";
+    private string formRTO = "";
+    private string formRPO = "";
+    private string formClasificacionInformacion = "";
+    private string formEnvironmentIdStr = "";
+    private string formCriticalityIdStr = "";
+    private string formCategoryIdStr = "";
+    private string formManufacturerIdStr = "";
+    private string formDeviceModelIdStr = "";
+    private string formTipoDispositivo = "";
+    private string formFuncion = "";
+    private string formTipoInfraestructura = "";
+    private string formHost = "";
+    private string formRAM = "";
+    private int? formCantidadCPU;
+    private string formVelocidadCPU = "";
+    private string formCapacidadDAS = "";
+    private string formCapacidadSAN = "";
+    private string formSistemaOperativo = "";
+    private string formFirmware = "";
+    private string formIP = "";
+    private string formMAC = "";
+    private DateTime? formGarantiaExpira;
+    private string formObservaciones = "";
+    private string? addingCatalogKind = null;
+    private string newCatalogName = "";
+    private Action<string>? onCatalogAdded = null;
+    private bool mostrarModalFabricante;
+    private string newFabricanteName = "";
+    private bool mostrarModalModelo;
+    private string newModeloName = "";
+    private string newModeloFabricanteIdStr = "";
+    private bool mostrarModalAgregarArea;
+    private string nuevoAreaNombre = "";
+
+    /// <summary>True si Tipo de infraestructura es Físico (solo entonces se muestran Serial, Fabricante, Modelo).</summary>
+    private bool EsFisico => !string.IsNullOrWhiteSpace(formTipoInfraestructura) && formTipoInfraestructura.Trim().Contains("Físico", StringComparison.OrdinalIgnoreCase);
+    /// <summary>True si Tipo de infraestructura es Virtual (solo entonces se muestra y exige Host).</summary>
+    private bool EsVirtual => !string.IsNullOrWhiteSpace(formTipoInfraestructura) && formTipoInfraestructura.Trim().Contains("Virtual", StringComparison.OrdinalIgnoreCase);
+
+    private List<string> hostsFisicosList = new();
+    private IEnumerable<IITS.Entities.DeviceModel> ModelosParaFabricanteSeleccionado => Guid.TryParse(formManufacturerIdStr, out var mid)
+        ? deviceModelsList.Where(d => d.ManufacturerId == mid)
+        : deviceModelsList;
+
+    private IEnumerable<OperacionRow> itemsFiltrados =>
+        items.Where(i => (string.IsNullOrEmpty(filtroArea) || i.AreaName == filtroArea) && (string.IsNullOrEmpty(filtroEstatus) || i.EstatusNombre == filtroEstatus));
+
+    private class OperacionRow
+    {
+        public Guid Id { get; set; }
+        public string Hostname { get; set; } = "";
+        public string Serial { get; set; } = "";
+        public string? EstatusNombre { get; set; }
+        public string? OfficeName { get; set; }
+        public string? AreaName { get; set; }
+        public string? AlojamientoName { get; set; }
+        public string? TipoDispositivo { get; set; }
+        public string? Funcion { get; set; }
+        public string? IP { get; set; }
+        public string? SistemaOperativo { get; set; }
+        public string? Observaciones { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        loading = true;
+        estatusList = await Db.Estatus.AsNoTracking().OrderBy(e => e.Codigo).ToListAsync();
+        var hasOffices = await Db.TableExistsAsync("Offices");
+        var hasAreas = await Db.TableExistsAsync("Areas");
+        var hasAlojamientos = await Db.TableExistsAsync("Alojamientos");
+        catalogosDisponibles = hasOffices && hasAreas && hasAlojamientos;
+        if (catalogosDisponibles)
+        {
+            officesList = await Db.Offices.AsNoTracking().OrderBy(o => o.Name).ToListAsync();
+            areasList = await Db.Areas.AsNoTracking().OrderBy(a => a.Name).ToListAsync();
+            alojamientosList = await Db.Alojamientos.AsNoTracking().OrderBy(a => a.Nombre).ToListAsync();
+            environmentsList = await Db.Environments.AsNoTracking().OrderBy(e => e.Name).ToListAsync();
+            criticalitiesList = await Db.Criticalities.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+            categoriesList = await Db.Categories.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+            vendorsList = await Db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+            deviceModelsList = await Db.DeviceModels.AsNoTracking().Include(d => d.Manufacturer).OrderBy(d => d.Name).ToListAsync();
+            hostsFisicosList = (await Db.Operaciones.AsNoTracking().Where(o => o.TipoInfraestructura != null && o.TipoInfraestructura.Contains("Físico")).Select(o => o.Hostname).ToListAsync()).Where(h => !string.IsNullOrWhiteSpace(h)).OrderBy(h => h).Distinct().ToList();
+            await CargarCatalogItems();
+            // Excluir ítems con alta pendiente de aprobación y obtener pendientes para badge
+            var pendientesCrear = await AprobacionService.GetCrearPendientesAsync("Operaciones");
+            idsPorAprobar = await AprobacionService.GetEntidadIdsPendientesAsync("Operaciones");
+            var full = await Db.Operaciones.AsNoTracking()
+                .Where(o => !pendientesCrear.Contains(o.Id))
+                .Include(o => o.Estatus)
+                .Include(o => o.Office)
+                .Include(o => o.Area)
+                .Include(o => o.Alojamiento)
+                .Include(o => o.OwnerArea)
+                .Include(o => o.Environment)
+                .Include(o => o.Criticality)
+                .Include(o => o.Category)
+                .Include(o => o.Manufacturer)
+                .Include(o => o.DeviceModel)
+                .OrderBy(o => o.Hostname)
+                .ToListAsync();
+            items = full.Select(o => new OperacionRow
+            {
+                Id = o.Id,
+                Hostname = o.Hostname,
+                Serial = o.Serial ?? "",
+                EstatusNombre = o.Estatus?.Nombre,
+                OfficeName = o.Office?.Name,
+                AreaName = o.Area?.Name,
+                AlojamientoName = o.Alojamiento?.Nombre,
+                TipoDispositivo = o.TipoDispositivo,
+                Funcion = o.Funcion,
+                IP = o.IP,
+                SistemaOperativo = o.SistemaOperativo,
+                Observaciones = o.Observaciones
+            }).ToList();
+        }
+        else
+        {
+            officesList = new List<IITS.Entities.Office>();
+            areasList = new List<IITS.Entities.Area>();
+            alojamientosList = new List<IITS.Entities.Alojamiento>();
+            environmentsList = new List<IITS.Entities.Environment>();
+            criticalitiesList = new List<IITS.Entities.Criticality>();
+            categoriesList = new List<IITS.Entities.Category>();
+            vendorsList = new List<IITS.Entities.Vendor>();
+            deviceModelsList = new List<IITS.Entities.DeviceModel>();
+            var pendientesCrearSimple = await AprobacionService.GetCrearPendientesAsync("Operaciones");
+            idsPorAprobar = await AprobacionService.GetEntidadIdsPendientesAsync("Operaciones");
+            items = await Db.Operaciones.AsNoTracking()
+                .Where(o => !pendientesCrearSimple.Contains(o.Id))
+                .OrderBy(o => o.Hostname)
+                .Select(o => new OperacionRow
+                {
+                    Id = o.Id,
+                    Hostname = o.Hostname,
+                    Serial = o.Serial ?? "",
+                    EstatusNombre = o.Estatus != null ? o.Estatus.Nombre : null
+                })
+                .ToListAsync();
+        }
+        loading = false;
+    }
+
+    private async Task CargarCatalogItems()
+    {
+        if (!await Db.TableExistsAsync("CatalogItems")) return;
+        var all = await Db.CatalogItems.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+        tipoDispositivoList = all.Where(c => c.Kind == "TipoDispositivo").ToList();
+        funcionList = all.Where(c => c.Kind == "Funcion").ToList();
+        tipoInfraestructuraList = all.Where(c => c.Kind == "TipoInfraestructura").ToList();
+        sistemaOperativoList = all.Where(c => c.Kind == "SistemaOperativo").ToList();
+    }
+
+    private void AbrirAgregarCatalogo(string kind, Action<string> onAdded)
+    {
+        addingCatalogKind = kind;
+        newCatalogName = "";
+        onCatalogAdded = onAdded;
+    }
+    private void AgregarTipoDispositivo() => AbrirAgregarCatalogo("TipoDispositivo", v => formTipoDispositivo = v);
+    private void AgregarFuncion() => AbrirAgregarCatalogo("Funcion", v => formFuncion = v);
+    private void AgregarSistemaOperativo() => AbrirAgregarCatalogo("SistemaOperativo", v => formSistemaOperativo = v);
+
+    private void AbrirAgregarFabricante() { newFabricanteName = ""; mostrarModalFabricante = true; }
+    private void CerrarAgregarFabricante() { mostrarModalFabricante = false; newFabricanteName = ""; }
+    private async Task GuardarAgregarFabricante()
+    {
+        if (string.IsNullOrWhiteSpace(newFabricanteName)) return;
+        var name = newFabricanteName.Trim();
+        if (vendorsList.Any(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase))) { Toast.ShowToast("Ese fabricante ya existe.", IITS.Services.ToastLevel.Warning); return; }
+        var id = Guid.NewGuid();
+        Db.Vendors.Add(new IITS.Entities.Vendor { Id = id, Name = name });
+        await Db.SaveChangesAsync();
+        vendorsList = await Db.Vendors.AsNoTracking().OrderBy(v => v.Name).ToListAsync();
+        formManufacturerIdStr = id.ToString();
+        CerrarAgregarFabricante();
+        Toast.ShowToast("Fabricante agregado.", IITS.Services.ToastLevel.Success);
+    }
+
+    private void AbrirAgregarModelo() { newModeloName = ""; newModeloFabricanteIdStr = formManufacturerIdStr ?? ""; mostrarModalModelo = true; }
+    private void CerrarAgregarModelo() { mostrarModalModelo = false; newModeloName = ""; }
+    private async Task GuardarAgregarModelo()
+    {
+        if (string.IsNullOrWhiteSpace(newModeloName) || !Guid.TryParse(newModeloFabricanteIdStr, out var manufId)) { Toast.ShowToast("Seleccione fabricante e ingrese nombre.", IITS.Services.ToastLevel.Warning); return; }
+        var name = newModeloName.Trim();
+        if (deviceModelsList.Any(d => d.ManufacturerId == manufId && string.Equals(d.Name, name, StringComparison.OrdinalIgnoreCase))) { Toast.ShowToast("Ese modelo ya existe para ese fabricante.", IITS.Services.ToastLevel.Warning); return; }
+        var id = Guid.NewGuid();
+        Db.DeviceModels.Add(new IITS.Entities.DeviceModel { Id = id, ManufacturerId = manufId, Name = name });
+        await Db.SaveChangesAsync();
+        deviceModelsList = await Db.DeviceModels.AsNoTracking().Include(d => d.Manufacturer).OrderBy(d => d.Name).ToListAsync();
+        formDeviceModelIdStr = id.ToString();
+        CerrarAgregarModelo();
+        Toast.ShowToast("Modelo agregado.", IITS.Services.ToastLevel.Success);
+    }
+
+    private void AbrirAgregarArea() { nuevoAreaNombre = ""; mostrarModalAgregarArea = true; }
+    private void CerrarModalAgregarArea() { mostrarModalAgregarArea = false; nuevoAreaNombre = ""; }
+    private async Task GuardarAgregarArea()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoAreaNombre)) return;
+        var name = nuevoAreaNombre.Trim();
+        if (areasList.Any(a => string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase))) { Toast.ShowToast("Esa área ya existe.", IITS.Services.ToastLevel.Warning); return; }
+        var id = Guid.NewGuid();
+        Db.Areas.Add(new IITS.Entities.Area { Id = id, Name = name });
+        await Db.SaveChangesAsync();
+        areasList = await Db.Areas.AsNoTracking().OrderBy(a => a.Name).ToListAsync();
+        CerrarModalAgregarArea();
+        Toast.ShowToast("Área agregada.", IITS.Services.ToastLevel.Success);
+    }
+
+    private void OnFabricanteCambio()
+    {
+        if (!Guid.TryParse(formManufacturerIdStr, out var mid)) return;
+        var vendor = vendorsList.FirstOrDefault(v => v.Id == mid);
+        if (vendor?.Name == "N/A")
+        {
+            var modeloNa = deviceModelsList.FirstOrDefault(d => d.ManufacturerId == mid && d.Name == "N/A");
+            if (modeloNa != null) formDeviceModelIdStr = modeloNa.Id.ToString();
+        }
+    }
+
+    private void CerrarAgregarCatalogo()
+    {
+        addingCatalogKind = null;
+        newCatalogName = "";
+        onCatalogAdded = null;
+    }
+
+    private async Task KeydownAgregarCatalogo(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await GuardarAgregarCatalogo();
+    }
+
+    private async Task GuardarAgregarCatalogo()
+    {
+        if (string.IsNullOrWhiteSpace(newCatalogName) || string.IsNullOrEmpty(addingCatalogKind)) return;
+        var name = newCatalogName.Trim();
+        var existingNames = await Db.CatalogItems.Where(c => c.Kind == addingCatalogKind).Select(c => c.Name).ToListAsync();
+        if (existingNames.Any(n => string.Equals(n.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+        {
+            Toast.ShowToast("Ese valor ya existe (no se permiten duplicados aunque cambien mayúsculas)", IITS.Services.ToastLevel.Warning);
+            return;
+        }
+        Db.CatalogItems.Add(new IITS.Entities.CatalogItem { Id = Guid.NewGuid(), Kind = addingCatalogKind, Name = name });
+        await Db.SaveChangesAsync();
+        await CargarCatalogItems();
+        onCatalogAdded?.Invoke(name);
+        CerrarAgregarCatalogo();
+        Toast.ShowToast("Agregado. Puede usarlo en el select.", IITS.Services.ToastLevel.Success);
+    }
+
+    private void AbrirNuevo()
+    {
+        editingId = null;
+        formHostname = ""; formSerial = ""; formObservaciones = ""; formIP = ""; formMAC = ""; formHost = ""; formRAM = ""; formVelocidadCPU = ""; formCapacidadDAS = ""; formCapacidadSAN = ""; formFirmware = ""; formGarantiaExpira = null;
+        formTipoDispositivo = ""; formFuncion = ""; formTipoInfraestructura = ""; formSistemaOperativo = "";
+        formCantidadCPU = null;
+        formEstatusIdStr = estatusList.FirstOrDefault(e => e.Codigo == 1000)?.Id.ToString() ?? "";
+        formOfficeIdStr = ""; formAreaIdStr = ""; formAlojamientoIdStr = ""; formOwnerAreaIdStr = ""; formPropietario = ""; formBcp = ""; formRTO = ""; formRPO = ""; formClasificacionInformacion = "";
+        formEnvironmentIdStr = ""; formCriticalityIdStr = ""; formCategoryIdStr = ""; formManufacturerIdStr = ""; formDeviceModelIdStr = "";
+        mostrarModal = true;
+    }
+
+    private async Task AbrirEditar(Guid id)
+    {
+        var o = await Db.Operaciones.AsNoTracking()
+            .Include(x => x.Estatus).Include(x => x.Office).Include(x => x.Area).Include(x => x.Alojamiento)
+            .Include(x => x.OwnerArea).Include(x => x.Environment).Include(x => x.Criticality).Include(x => x.Category)
+            .Include(x => x.Manufacturer).Include(x => x.DeviceModel)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (o == null) return;
+        editingId = id;
+        formHostname = o.Hostname ?? "";
+        formSerial = o.Serial ?? "";
+        formObservaciones = o.Observaciones ?? "";
+        formIP = o.IP ?? "";
+        formMAC = o.MAC ?? "";
+        formHost = o.Host ?? "";
+        formRAM = o.RAM ?? "";
+        formVelocidadCPU = o.VelocidadCPU ?? "";
+        formCapacidadDAS = o.CapacidadDAS ?? "";
+        formCapacidadSAN = o.CapacidadSAN ?? "";
+        formFirmware = o.Firmware ?? "";
+        formGarantiaExpira = o.GarantiaExpira;
+        formCantidadCPU = o.CantidadCPU;
+        formTipoDispositivo = o.TipoDispositivo ?? "";
+        formFuncion = o.Funcion ?? "";
+        formTipoInfraestructura = o.TipoInfraestructura ?? "";
+        formSistemaOperativo = o.SistemaOperativo ?? "";
+        formEstatusIdStr = o.EstatusId.ToString();
+        formOfficeIdStr = o.OfficeId?.ToString() ?? "";
+        formAreaIdStr = o.AreaId?.ToString() ?? "";
+        formAlojamientoIdStr = o.AlojamientoId?.ToString() ?? "";
+        formOwnerAreaIdStr = o.OwnerAreaId?.ToString() ?? "";
+        formPropietario = o.Propietario ?? "";
+        formBcp = o.BCP == true ? "Sí" : (o.BCP == false ? "No" : "");
+        formRTO = o.RTO ?? "";
+        formRPO = o.RPO ?? "";
+        formClasificacionInformacion = o.ClasificacionInformacion ?? "";
+        formEnvironmentIdStr = o.EnvironmentId?.ToString() ?? "";
+        formCriticalityIdStr = o.CriticalityId?.ToString() ?? "";
+        formCategoryIdStr = o.CategoryId?.ToString() ?? "";
+        formManufacturerIdStr = o.ManufacturerId?.ToString() ?? "";
+        formDeviceModelIdStr = o.DeviceModelId?.ToString() ?? "";
+        mostrarModal = true;
+    }
+
+    private void CerrarModal() { mostrarModal = false; editingId = null; }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(formHostname)) { Toast.ShowToast("Hostname requerido", IITS.Services.ToastLevel.Warning); return; }
+        var esVirtual = !string.IsNullOrWhiteSpace(formTipoInfraestructura) && formTipoInfraestructura.Trim().Contains("Virtual", StringComparison.OrdinalIgnoreCase);
+        if (esVirtual && string.IsNullOrWhiteSpace(formHost)) { Toast.ShowToast("Host es requerido cuando el tipo de infraestructura es Virtual.", IITS.Services.ToastLevel.Warning); return; }
+        var esFisico = formTipoInfraestructura?.Trim().Equals("Físico", StringComparison.OrdinalIgnoreCase) == true;
+        if (esFisico && string.IsNullOrWhiteSpace(formSerial?.Trim())) { Toast.ShowToast("Serial es obligatorio cuando el dispositivo es físico.", IITS.Services.ToastLevel.Warning); return; }
+        if (!string.IsNullOrWhiteSpace(formIP))
+        {
+            var ip = formIP.Trim();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(ip, @"^([0-9]{1,3}\.){3}[0-9]{1,3}$") && !System.Text.RegularExpressions.Regex.IsMatch(ip, @"^[a-fA-F0-9:]+$"))
+            { Toast.ShowToast("El campo IP no tiene un formato válido (ej. 192.168.1.10 o IPv6).", IITS.Services.ToastLevel.Warning); return; }
+        }
+        if (!Guid.TryParse(formEstatusIdStr, out var eid)) return;
+        var hostname = formHostname.Trim();
+        if (hostname.Contains("\n") || hostname.Contains("\r") || hostname.Length > 200)
+        { Toast.ShowToast("Hostname no debe contener saltos de línea y debe ser menor a 200 caracteres.", IITS.Services.ToastLevel.Warning); return; }
+        var serial = formSerial?.Trim() ?? "";
+        var garantiaExpira = formGarantiaExpira;
+        Guid? officeId = Guid.TryParse(formOfficeIdStr, out var oid) ? oid : null;
+        Guid? areaId = Guid.TryParse(formAreaIdStr, out var aid) ? aid : null;
+        Guid? alojamientoId = Guid.TryParse(formAlojamientoIdStr, out var alid) ? alid : null;
+        Guid? ownerAreaId = Guid.TryParse(formOwnerAreaIdStr, out var oaid) ? oaid : null;
+        var propietario = string.IsNullOrWhiteSpace(formPropietario) ? null : formPropietario.Trim();
+        bool? bcp = string.IsNullOrWhiteSpace(formBcp) ? null : (formBcp.Trim().Equals("Sí", StringComparison.OrdinalIgnoreCase));
+        var rto = string.IsNullOrWhiteSpace(formRTO) ? null : formRTO.Trim();
+        var rpo = string.IsNullOrWhiteSpace(formRPO) ? null : formRPO.Trim();
+        var clasifInfo = string.IsNullOrWhiteSpace(formClasificacionInformacion) ? null : formClasificacionInformacion.Trim();
+        Guid? envId = Guid.TryParse(formEnvironmentIdStr, out var env) ? env : null;
+        Guid? critId = Guid.TryParse(formCriticalityIdStr, out var cid) ? cid : null;
+        Guid? catId = Guid.TryParse(formCategoryIdStr, out var cat) ? cat : null;
+        Guid? manufId = Guid.TryParse(formManufacturerIdStr, out var mid) ? mid : null;
+        Guid? devModelId = Guid.TryParse(formDeviceModelIdStr, out var dmid) ? dmid : null;
+
+        if (editingId.HasValue && catalogosDisponibles)
+        {
+            var ent = await Db.Operaciones.FindAsync(editingId.Value);
+            if (ent == null) { Toast.ShowToast("Registro no encontrado.", IITS.Services.ToastLevel.Warning); return; }
+            var cambios = new List<string>();
+            if (ent.Hostname != hostname) cambios.Add($"Hostname: {ent.Hostname ?? "-"} → {hostname}");
+            if ((ent.Serial ?? "") != serial) cambios.Add($"Serial: {ent.Serial ?? "-"} → {serial ?? "-"}");
+            if (ent.EstatusId != eid) cambios.Add($"Estatus: (cambió)");
+            if (ent.OfficeId != officeId) cambios.Add($"Oficina: (cambió)");
+            if (ent.AreaId != areaId) cambios.Add($"Área: (cambió)");
+            if (ent.AlojamientoId != alojamientoId) cambios.Add($"Alojamiento: (cambió)");
+            if ((ent.TipoDispositivo ?? "") != (formTipoDispositivo?.Trim() ?? "")) cambios.Add($"Tipo dispositivo: {ent.TipoDispositivo ?? "-"} → {formTipoDispositivo?.Trim() ?? "-"}");
+            if ((ent.Funcion ?? "") != (formFuncion?.Trim() ?? "")) cambios.Add($"Función: {ent.Funcion ?? "-"} → {formFuncion?.Trim() ?? "-"}");
+            if ((ent.TipoInfraestructura ?? "") != (formTipoInfraestructura?.Trim() ?? "")) cambios.Add($"Tipo infra: {ent.TipoInfraestructura ?? "-"} → {formTipoInfraestructura?.Trim() ?? "-"}");
+            if ((ent.IP ?? "") != (formIP?.Trim() ?? "")) cambios.Add($"IP: {ent.IP ?? "-"} → {formIP?.Trim() ?? "-"}");
+            if ((ent.SistemaOperativo ?? "") != (formSistemaOperativo?.Trim() ?? "")) cambios.Add($"SO: {ent.SistemaOperativo ?? "-"} → {formSistemaOperativo?.Trim() ?? "-"}");
+            if ((ent.Host ?? "") != (formHost?.Trim() ?? "")) cambios.Add($"Host: {ent.Host ?? "-"} → {formHost?.Trim() ?? "-"}");
+            if (ent.CantidadCPU != formCantidadCPU) cambios.Add($"Cant. CPU/VP: {ent.CantidadCPU} → {formCantidadCPU}");
+            var detalleAudit = cambios.Count > 0 ? string.Join("; ", cambios) : hostname;
+            // Descartar los cambios del change tracker para no contaminar futuras operaciones
+            Db.Entry(ent).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+            // No aplicar los cambios hasta aprobación — serializar datos propuestos
+            await AuditLogService.RegistrarAsync("Operaciones", ent.Id, "Solicitar edición", detalleAudit, UserService.UserId);
+            var propuestoOp = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                Hostname = hostname, Serial = serial, EstatusId = eid.ToString(),
+                OfficeId = officeId?.ToString(), AreaId = areaId?.ToString(), AlojamientoId = alojamientoId?.ToString(),
+                Propietario = propietario, BCP = bcp, RTO = rto, RPO = rpo, ClasificacionInformacion = clasifInfo,
+                EnvironmentId = envId?.ToString(), CriticalityId = critId?.ToString(), CategoryId = catId?.ToString(),
+                ManufacturerId = manufId?.ToString(), DeviceModelId = devModelId?.ToString(),
+                TipoDispositivo = string.IsNullOrWhiteSpace(formTipoDispositivo) ? null : formTipoDispositivo.Trim(),
+                Funcion = string.IsNullOrWhiteSpace(formFuncion) ? null : formFuncion.Trim(),
+                TipoInfraestructura = string.IsNullOrWhiteSpace(formTipoInfraestructura) ? null : formTipoInfraestructura.Trim(),
+                Host = string.IsNullOrWhiteSpace(formHost) ? null : formHost.Trim(),
+                RAM = string.IsNullOrWhiteSpace(formRAM) ? null : formRAM.Trim(),
+                CantidadCPU = formCantidadCPU,
+                VelocidadCPU = string.IsNullOrWhiteSpace(formVelocidadCPU) ? null : formVelocidadCPU.Trim(),
+                CapacidadDAS = string.IsNullOrWhiteSpace(formCapacidadDAS) ? null : formCapacidadDAS.Trim(),
+                CapacidadSAN = string.IsNullOrWhiteSpace(formCapacidadSAN) ? null : formCapacidadSAN.Trim(),
+                SistemaOperativo = string.IsNullOrWhiteSpace(formSistemaOperativo) ? null : formSistemaOperativo.Trim(),
+                Firmware = string.IsNullOrWhiteSpace(formFirmware) ? null : formFirmware.Trim(),
+                GarantiaExpira = garantiaExpira?.ToString("O"),
+                IP = string.IsNullOrWhiteSpace(formIP) ? null : formIP.Trim(),
+                MAC = string.IsNullOrWhiteSpace(formMAC) ? null : formMAC.Trim(),
+                Observaciones = string.IsNullOrWhiteSpace(formObservaciones) ? null : formObservaciones.Trim()
+            });
+            await AprobacionService.RegistrarAsync("Operaciones", ent.Id, "Por aprobar", "Modificación de tecnología", UserService.UserId,
+                tipoAccion: "Editar", datosPropuestos: propuestoOp);
+            var cambiosHtml = cambios.Count > 0 ? string.Join("<br/>", cambios.Select(c => System.Net.WebUtility.HtmlEncode(c))) : null;
+            try { await NotificarAprobadoresTecnologiaAsync(ent.Id, hostname, esModificacion: true, cambiosHtml: cambiosHtml); } catch { }
+        }
+        else
+        {
+            var id = Guid.NewGuid();
+            var now = DateTime.UtcNow;
+            if (catalogosDisponibles)
+            {
+                Db.Operaciones.Add(new IITS.Entities.Operacion
+                {
+                    Id = id,
+                    Hostname = hostname,
+                    Serial = serial,
+                    EstatusId = eid,
+                    CreatedAt = now,
+                    OfficeId = officeId,
+                    AreaId = areaId,
+                    AlojamientoId = alojamientoId,
+                    OwnerAreaId = null,
+                    Propietario = propietario,
+                    BCP = bcp,
+                    RTO = rto,
+                    RPO = rpo,
+                    ClasificacionInformacion = clasifInfo,
+                    EnvironmentId = envId,
+                    CriticalityId = critId,
+                    CategoryId = catId,
+                    ManufacturerId = manufId,
+                    DeviceModelId = devModelId,
+                    TipoDispositivo = string.IsNullOrWhiteSpace(formTipoDispositivo) ? null : formTipoDispositivo.Trim(),
+                    Funcion = string.IsNullOrWhiteSpace(formFuncion) ? null : formFuncion.Trim(),
+                    TipoInfraestructura = string.IsNullOrWhiteSpace(formTipoInfraestructura) ? null : formTipoInfraestructura.Trim(),
+                    Host = string.IsNullOrWhiteSpace(formHost) ? null : formHost.Trim(),
+                    RAM = string.IsNullOrWhiteSpace(formRAM) ? null : formRAM.Trim(),
+                    CantidadCPU = formCantidadCPU,
+                    VelocidadCPU = string.IsNullOrWhiteSpace(formVelocidadCPU) ? null : formVelocidadCPU.Trim(),
+                    CapacidadDAS = string.IsNullOrWhiteSpace(formCapacidadDAS) ? null : formCapacidadDAS.Trim(),
+                    CapacidadSAN = string.IsNullOrWhiteSpace(formCapacidadSAN) ? null : formCapacidadSAN.Trim(),
+                    SistemaOperativo = string.IsNullOrWhiteSpace(formSistemaOperativo) ? null : formSistemaOperativo.Trim(),
+                    Firmware = string.IsNullOrWhiteSpace(formFirmware) ? null : formFirmware.Trim(),
+                    GarantiaExpira = garantiaExpira,
+                    IP = string.IsNullOrWhiteSpace(formIP) ? null : formIP.Trim(),
+                    MAC = string.IsNullOrWhiteSpace(formMAC) ? null : formMAC.Trim(),
+                    Observaciones = string.IsNullOrWhiteSpace(formObservaciones) ? null : formObservaciones.Trim()
+                });
+                await Db.SaveChangesAsync();
+            }
+            else
+            {
+                await Db.Database.ExecuteSqlRawAsync(
+                    "INSERT INTO [Operaciones] ([Id], [Hostname], [Serial], [EstatusId], [CreatedAt]) VALUES ({0}, {1}, {2}, {3}, {4})",
+                    id, hostname, serial, eid, now);
+            }
+            await AuditLogService.RegistrarAsync("Operaciones", id, "Crear", hostname, UserService.UserId);
+            await AprobacionService.RegistrarAsync("Operaciones", id, "Por aprobar", "Alta de tecnología", UserService.UserId, tipoAccion: "Crear");
+            try { await NotificarAprobadoresTecnologiaAsync(id, hostname); } catch { }
+        }
+        CerrarModal();
+        await Cargar();
+    }
+
+    private async Task NotificarAprobadoresTecnologiaAsync(Guid entidadId, string hostname, bool esModificacion = false, string? cambiosHtml = null)
+    {
+        var aprobadores = await AprobacionPermisoService.GetApproversForModuloAsync("Operaciones");
+        var accion = esModificacion ? "Modificación de tecnología" : "Alta de tecnología";
+        var subject = $"IITS: Solicitud por aprobar - Tecnología - {hostname}";
+        var body = "<p>Se ha registrado una solicitud pendiente de aprobación.</p>";
+        body += "<p><strong>Módulo:</strong> Tecnología<br/><strong>Acción:</strong> " + System.Net.WebUtility.HtmlEncode(accion) + "<br/><strong>Hostname:</strong> " + System.Net.WebUtility.HtmlEncode(hostname) + "</p>";
+        if (esModificacion && !string.IsNullOrEmpty(cambiosHtml))
+            body += "<p><strong>Detalle de cambios (antes → después):</strong></p><p style=\"margin-left:1em;font-family:monospace;\">" + cambiosHtml + "</p>";
+        var baseUrl = Config["App:BaseUrl"]?.TrimEnd('/');
+        if (!string.IsNullOrEmpty(baseUrl))
+            body += "<p><a href=\"" + System.Net.WebUtility.HtmlEncode(baseUrl) + "/auditoria/operaciones\" style=\"color:#00338d;\">Ir a IITS para aprobar o rechazar</a></p>";
+        foreach (var u in aprobadores)
+        {
+            if (string.IsNullOrWhiteSpace(u.Email)) continue;
+            try { await EmailOutboxService.EnqueueAsync(u.Email, subject, body); } catch { /* no fallar el flujo */ }
+        }
+    }
+
+    private async Task Eliminar(Guid id) { var e = await Db.Operaciones.FindAsync(id); if (e != null) { Db.Operaciones.Remove(e); await Db.SaveChangesAsync(); await Cargar(); } }
+}
