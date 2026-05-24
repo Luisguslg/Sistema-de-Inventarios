@@ -32,10 +32,7 @@ builder.Services.AddAuthentication(options =>
     options.SlidingExpiration = true;
     options.LoginPath = "/";
     options.AccessDeniedPath = "/";
-    // [SEC-AUDIT]: Mitigación para CWE-614 / CWE-1004 - La cookie de sesión se emite con los
-    // atributos HttpOnly (impide acceso desde JavaScript, mitiga XSS), SameSite=Strict
-    // (bloquea envío en solicitudes cross-site, mitiga CSRF) y Secure (transmisión únicamente
-    // sobre HTTPS en producción). En entorno de desarrollo se usa SameAsRequest para permitir HTTP local.
+    // CWE-614, CWE-1004: HttpOnly + SameSite=Strict + Secure
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Strict;
     options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
@@ -100,10 +97,7 @@ builder.Services.AddRateLimiter(opts =>
 
 var app = builder.Build();
 
-// [SEC-AUDIT]: Mitigación para CWE-23 - La ruta del directorio de logs se canonicaliza
-// mediante Path.GetFullPath para eliminar segmentos relativos (../) antes de su uso.
-// Se valida explícitamente que el path resultante esté subordinado al ContentRootPath,
-// previniendo escrituras fuera del árbol de la aplicación ante cualquier manipulación del entorno.
+// CWE-23: path canonicalizado y validado contra ContentRootPath antes de usar
 var contentRoot = Path.GetFullPath(app.Environment.ContentRootPath);
 var logsDir = Path.GetFullPath(Path.Combine(contentRoot, "Logs"));
 if (!logsDir.StartsWith(contentRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
@@ -335,15 +329,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
-// [SEC-AUDIT]: Mitigación para CWE-16 / CWE-693 - Middleware de cabeceras de seguridad HTTP.
-// Se inyectan en cada respuesta para reducir la superficie de ataque a nivel de transporte:
-//   X-Content-Type-Options: nosniff     → previene MIME-type sniffing (CWE-430).
-//   X-Frame-Options: SAMEORIGIN         → bloquea framing externo, mitiga clickjacking (CWE-1021).
-//   Referrer-Policy                     → restringe filtración de URLs en cabecera Referer.
-//   Permissions-Policy                  → deshabilita APIs de hardware no utilizadas.
-//   Content-Security-Policy             → define fuentes de contenido permitidas; unsafe-inline y
-//                                         unsafe-eval son requeridos por Blazor Server y SignalR;
-//                                         connect-src incluye ws:/wss: para el WebSocket de SignalR.
+// CWE-16, CWE-693: cabeceras de seguridad HTTP (nosniff, SAMEORIGIN, CSP, Permissions-Policy)
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";

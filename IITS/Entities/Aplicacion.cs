@@ -11,10 +11,7 @@ public class Aplicacion
 {
     public Guid Id { get; set; }
 
-    // [SEC-AUDIT]: Mitigación para CWE-209 - Los atributos de validación incluyen mensajes de error
-    // genéricos orientados al usuario. Se elimina la exposición de nombres de propiedades internas
-    // del modelo y de límites exactos de longitud que el motor de validación por defecto retornaba
-    // en las respuestas, previniendo la fuga de información sobre la estructura del backend.
+    // CWE-209: mensajes de error genéricos, sin exponer nombres de propiedades internas
     [Required(ErrorMessage = "El nombre de la aplicación es requerido.")]
     [MaxLength(300, ErrorMessage = "El nombre de la aplicación es demasiado largo.")]
     public string Nombre { get; set; } = "";
