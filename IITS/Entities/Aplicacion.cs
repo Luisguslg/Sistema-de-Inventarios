@@ -19,16 +19,16 @@ public class Aplicacion
     [MaxLength(500, ErrorMessage = "La descripción de funcionalidad es demasiado larga.")]
     public string Funcionalidad { get; set; } = "";
 
-    [MaxLength(200, ErrorMessage = "El campo Propietario es demasiado largo.")]
+    [MaxLength(200, ErrorMessage = "El campo del propietario es demasiado largo.")]
     public string Propietario { get; set; } = "";
 
-    [MaxLength(200, ErrorMessage = "El campo Responsable es demasiado largo.")]
+    [MaxLength(200, ErrorMessage = "El campo del responsable es demasiado largo.")]
     public string Responsable { get; set; } = "";
 
     [MaxLength(200, ErrorMessage = "El campo Tipo de alojamiento es demasiado largo.")]
     public string TipoAlojamiento { get; set; } = "";
 
-    [MaxLength(300, ErrorMessage = "El campo Proveedor es demasiado largo.")]
+    [MaxLength(300, ErrorMessage = "El campo del proveedor es demasiado largo.")]
     public string Proveedor { get; set; } = "";
 
     [MaxLength(200, ErrorMessage = "El campo Clasificación de información es demasiado largo.")]
