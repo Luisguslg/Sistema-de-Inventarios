@@ -13,7 +13,9 @@ using Microsoft.Data.SqlClient;
 
 QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
+// CWE-200: suprimir cabecera Server para no revelar la tecnología del servidor
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false);
 
 var sessionTimeoutMinutes = builder.Configuration.GetValue("Auth:SessionTimeoutMinutes", 30);
 if (sessionTimeoutMinutes < 5) sessionTimeoutMinutes = 5;
