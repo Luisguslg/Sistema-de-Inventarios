@@ -26,9 +26,16 @@ public class SessionCookieSignInMiddleware
     {
         if (context.User?.Identity?.IsAuthenticated != true)
         {
-            var result = await context.AuthenticateAsync(NegotiateDefaults.AuthenticationScheme);
-            if (result.Succeeded && result.Principal != null)
-                context.User = result.Principal;
+            try
+            {
+                var result = await context.AuthenticateAsync(NegotiateDefaults.AuthenticationScheme);
+                if (result.Succeeded && result.Principal != null)
+                    context.User = result.Principal;
+            }
+            catch (InvalidOperationException)
+            {
+                // Negotiate no disponible (entorno de test); DevAuthMiddleware ya habrá inyectado el usuario.
+            }
         }
 
         if (context.User?.Identity?.IsAuthenticated == true &&

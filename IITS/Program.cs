@@ -194,6 +194,11 @@ try
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // Las migraciones y seeds relacionales no aplican para InMemory (entorno de test).
+        if (db.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true)
+            goto skipStartupDb;
+
         try
         {
             await db.Database.MigrateAsync();
@@ -245,6 +250,7 @@ try
     {
         // Si falta alguna tabla de catálogo, la app puede arrancar igual.
     }
+        skipStartupDb:;
     }
 }
 catch (Exception ex)
@@ -369,7 +375,7 @@ app.MapGet("/api/auditoria/pdf", async (HttpContext ctx) =>
         await ctx.Response.WriteAsync("Parámetro modulo requerido: aplicaciones | operaciones | cuentas");
         return;
     }
-    var scope = ctx.RequestServices.CreateScope();
+    await using var scope = ctx.RequestServices.CreateAsyncScope();
     var pdfService = scope.ServiceProvider.GetRequiredService<IITS.Services.IAuditoriaPdfService>();
     var bytes = await pdfService.GenerarPdfAsync(modulo);
     var fileName = $"Auditoria_{modulo}_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
@@ -381,7 +387,7 @@ app.MapGet("/api/auditoria/pdf", async (HttpContext ctx) =>
 // Exportación: /api/export/{modulo}/xlsx|pdf|csv (Aplicaciones, Logs, etc.)
 app.MapGet("/api/export/{modulo}/{formato}", async (string modulo, string formato, HttpContext ctx) =>
 {
-    var scope = ctx.RequestServices.CreateScope();
+    await using var scope = ctx.RequestServices.CreateAsyncScope();
     var exportSvc = scope.ServiceProvider.GetRequiredService<IITS.Services.IExportService>();
     var ahora = DateTime.Now;
     var fecha = ahora.ToString("yyyyMMdd_HHmm");
@@ -660,3 +666,6 @@ static async Task EscribirExportacion(HttpContext ctx, IExportService exportSvc,
 }
 
 app.Run();
+
+// Requerido por WebApplicationFactory en los tests de integración
+public partial class Program { }

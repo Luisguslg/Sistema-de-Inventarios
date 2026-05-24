@@ -12,6 +12,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AcceptNPOIOSMFLicense>true</AcceptNPOIOSMFLicense>
+    <!-- El despliegue en IIS usa dotnet/aspnet runtime; el apphost nativo no es requerido -->
+    <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 
   <ItemGroup>
@@ -51,6 +53,10 @@
     <Folder Include="Data\" />
     <Folder Include="Logs\" />
     <Folder Include="wwwroot\font\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="IITS.Tests" />
   </ItemGroup>
 
 </Project>
